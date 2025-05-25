@@ -261,6 +261,33 @@ class PositionBook:
         self.mark: Dict[str, float] = {}
         self.peak = init_nav
 
+    def update(self, token: str, qty: float, price: float, side: str = "buy"):
+        """Record executed trade and update mark price."""
+        self.mark[token] = price
+        pos = self.pos.get(token)
+        if side == "buy":
+            if pos:
+                new_qty = pos.qty + qty
+                pos.entry = (pos.entry * pos.qty + price * qty) / new_qty
+                pos.qty = new_qty
+                pos.value += qty * price
+            else:
+                self.pos[token] = Position(
+                    token,
+                    qty,
+                    price,
+                    qty * price,
+                    price * (1 - STOP_LOSS_PCT / 100),
+                    price * (1 + TAKE_PROFIT_PCT / 100),
+                    "copy",
+                )
+        else:
+            if pos:
+                pos.qty -= qty
+                pos.value -= qty * price
+                if pos.qty <= 0:
+                    del self.pos[token]
+
     def nav(self):
         free = self.init - sum(p.value for p in self.pos.values())
         pos = sum(self.mark.get(t, p.entry) * p.qty for t, p in self.pos.items())
@@ -322,6 +349,17 @@ class CopyEngine:
         _ = await self.exec.swap_tx(quote["data"][0])
         # send tx via RPC (omitted) with priority fee
         await self.notif.send(f"BUY {amt} {token[:4]}… @ {price:.6f} SOL")
+        self.pb.update(token, amt, price, "buy")
+        nav = self.pb.nav()
+        NAV_G.set(nav)
+        PNL_G.set((nav - self.pb.init) / self.pb.init * 100)
+        self.pb.update_peak(nav)
+        dd = self.pb.global_dd(nav)
+        if dd >= GLOBAL_DD_PCT:
+            await self.notif.send(
+                f"GLOBAL DD {dd:.1f}% exceeds {GLOBAL_DD_PCT}% – shutting down"
+            )
+            raise SystemExit("drawdown limit hit")
 
     async def _wallet_stream(self):
         backoff = 1
