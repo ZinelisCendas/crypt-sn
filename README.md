@@ -30,3 +30,9 @@ pytest tests/smoke.py
 ```
 
 The test should complete in a few seconds with no failures.
+
+## Security
+
+For larger deployments or balances above a few thousand USD, consider using a
+hardware wallet or YubiHSM so that the private key never leaves secure
+hardware.
