@@ -80,13 +80,45 @@ class GmgnAPI:  # minimal wrapper
         async with self.http.get(url) as r: r.raise_for_status(); return (await r.json()).get("data",[])
 
 class SolscanAPI:
-    BASE="https://public-api.solscan.io"; def __init__(self): self.http=aiohttp.ClientSession()
+    BASE="https://public-api.solscan.io"
+
+    def __init__(self):
+        self.http=aiohttp.ClientSession()
     async def holders(self,mint):
         async with self.http.get(f"{self.BASE}/token/holders?account={mint}&limit=50") as r:
             r.raise_for_status(); return await r.json()
     async def meta(self,mint):
         async with self.http.get(f"{self.BASE}/token/meta?account={mint}") as r:
             r.raise_for_status(); return await r.json()
+
+class SafetyChecker:
+    def __init__(self, sol: SolscanAPI):
+        self.sol = sol
+
+    async def _solscan_ok(self, mint: str) -> bool:
+        try:
+            holders, meta = await asyncio.gather(
+                self.sol.holders(mint), self.sol.meta(mint)
+            )
+        except Exception as exc:
+            logging.getLogger(__name__).warning("Solscan fail %s: %s", mint, exc)
+            return False
+        if not meta or meta.get("status") != "success":
+            return False
+        return len(holders.get("data", [])) >= 5
+
+    async def rugcheck_pass(self, mint: str) -> bool:
+        base = "https://api.rugcheck.xyz/v1"
+        async with aiohttp.ClientSession() as s:
+            liq = await (await s.get(f"{base}/liquidity/{mint}", timeout=10)).json()
+            if liq["lp_owner_is_token_authority"] or liq["locked_pct"] < 70:
+                return False
+            vote = await (await s.get(f"{base}/votes/{mint}", timeout=5)).json()
+            return vote.get("vote") != "rug"
+
+    async def is_safe(self, mint: str) -> bool:
+        solscan_ok = await self._solscan_ok(mint)
+        return solscan_ok and await self.rugcheck_pass(mint)
 
 async def pyth_atr(mint:str, minutes:int=ATR_LOOKBACK_MIN)->float:
     end=int(time.time())
@@ -140,7 +172,9 @@ def add_priority_fee(tx_bytes:bytes, lamports_per_cu:int=1000)->bytes:
 # ---------------- position & risk -------------------------
 class PositionBook:
     def __init__(self,init_nav:float=100):
-        self.init=init_nav; self.pos:Dict[str,Position]={}; self.mark:Dict[str,float]{}
+        self.init=init_nav
+        self.pos:Dict[str,Position]={}
+        self.mark:Dict[str,float]={}
         self.peak=init_nav
     def nav(self):
         free=self.init-sum(p.value for p in self.pos.values())
@@ -167,6 +201,7 @@ class CopyEngine:
     def __init__(self,seed_addrs:Sequence[str]):
         self.addrs=set(seed_addrs); self.gmgn=GmgnAPI(); self.sol=SolscanAPI();
         self.exec=JupiterExec(); self.notif=Notifier(); self.pb=PositionBook(100)
+        self.safe=SafetyChecker(self.sol)
     # Kelly + ATR sizing
     async def _size(self,token:str,sharpe:float,nav:float):
         vol=await pyth_atr(token) or 0.05
@@ -187,7 +222,11 @@ class CopyEngine:
     async def _wallet_stream(self):
         async for ev in self.gmgn.api.http.ws_connect("wss://ws.gmgn.ai/v1"):
             if ev.get('address') in self.addrs and ev.get('side')=='buy':
-                await self._execute_buy(ev)
+                token=ev.get('token')
+                if not token:
+                    continue
+                if await self.safe.is_safe(token):
+                    await self._execute_buy(ev)
     async def run(self):
         start_http_server(9100)
         await self._wallet_stream()
