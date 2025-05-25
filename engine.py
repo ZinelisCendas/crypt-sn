@@ -8,6 +8,7 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, Sequence, cast
+from collections import deque
 
 import aiohttp
 import base58
@@ -24,10 +25,11 @@ from config import (
     RPC_URL,
     STOP_LOSS_PCT,
     TAKE_PROFIT_PCT,
+    NAV_VOL_TARGET,
 )
 from exec import JupiterExec, add_priority_fee
 from safety import SafetyChecker, SolscanAPI
-from sizing import kelly_size, pyth_atr, pyth_price
+from sizing import kelly_size, pyth_atr, pyth_price, portfolio_vol
 from wallet import GmgnAPI
 
 
@@ -127,13 +129,15 @@ class CopyEngine:
         self.safe = SafetyChecker(self.sol, self.notif)
         self.closed: Dict[str, float] = {}
         self.start_nav = self.pb.init
+        self.nav_hist: deque[float] = deque(maxlen=1440)
+        self.nav_hist.append(self.pb.init)
 
     async def _size(self, token: str, sharpe: float, nav: float) -> float:
         vol = await pyth_atr(token, notif=self.notif) or 0.05
         stake = kelly_size(nav, sharpe, vol, 30)
-        nav_vol_target = 0.10
-        portfolio_est_vol = vol or 0.05
-        stake = stake * (nav_vol_target / portfolio_est_vol)
+        sigma = portfolio_vol(list(self.nav_hist))
+        if sigma > 0:
+            stake *= NAV_VOL_TARGET / sigma
         return stake
 
     async def _execute_buy(self, ev: dict):
@@ -227,6 +231,7 @@ class CopyEngine:
             NAV_G.set(nav)
             if self.start_nav:
                 PNL_G.set(100 * (nav - self.start_nav) / self.start_nav)
+            self.nav_hist.append(nav)
 
             for token, ts in list(self.closed.items()):
                 if now - ts >= PRUNE_INTERVAL_H * 3600:

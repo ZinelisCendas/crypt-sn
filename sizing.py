@@ -59,3 +59,16 @@ def kelly_size(nav: float, edge: float, vol: float, n: int) -> float:
     f = min(f, MAX_KELLY_F)
     stake_pct = f / max(vol, 1e-3)
     return min(stake_pct, 0.25) * nav
+
+
+def portfolio_vol(nav_hist: list[float]) -> float:
+    """Annualised EWMA volatility of NAV series."""
+    if len(nav_hist) < 2:
+        return 0.0
+    returns = [nav_hist[i] / nav_hist[i - 1] - 1 for i in range(1, len(nav_hist))]
+    rev_returns = returns[::-1]
+    alpha = 2 / (60 * 24 + 1)
+    sigma = math.sqrt(
+        sum(alpha * (1 - alpha) ** i * r**2 for i, r in enumerate(rev_returns))
+    )
+    return sigma * math.sqrt(60 * 24 * 365)

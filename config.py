@@ -17,3 +17,4 @@ PRUNE_INTERVAL_H = float(os.getenv("PRUNE_INTERVAL_H", 6))
 JUPITER_URL = "https://quote-api.jup.ag"
 PYTH_HIST_URL = "https://hermes.pyth.network/api/historical_price/"
 RPC_URL = os.getenv("RPC_URL", "https://api.mainnet-beta.solana.com")
+NAV_VOL_TARGET = float(os.getenv("NAV_VOL_TARGET", 0.10))
