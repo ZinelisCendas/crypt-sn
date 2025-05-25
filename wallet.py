@@ -5,12 +5,11 @@ import time
 import math
 from dataclasses import dataclass
 from typing import Any, Dict, List
-
-import os
 import pandas as pd
 import numpy as np
 from sklearn.linear_model import LinearRegression
 from flipside import Flipside
+from config import FLIPSIDE_API_KEY, FLIPSIDE_API_URL
 import networkx as nx
 
 from helpers import retry
@@ -54,9 +53,7 @@ def _corr(a: Dict[str, float], b: Dict[str, float]) -> float:
 
 class FlipsideAPI:  # minimal wrapper over official SDK
     def __init__(self, notif: Any | None = None):
-        self.client = Flipside(
-            os.getenv("FLIPSIDE_API_KEY"), "https://api-v2.flipsidecrypto.xyz"
-        )
+        self.client = Flipside(FLIPSIDE_API_KEY, FLIPSIDE_API_URL)
         self.notif = notif
 
     async def info(self, addr: str, tf: str = "30d"):

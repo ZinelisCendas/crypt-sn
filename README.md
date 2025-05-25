@@ -16,7 +16,8 @@ This project now relies on the official `flipside` SDK.
 
 ```bash
 cp .env.template .env
-# edit .env and provide PRIVATE_KEY, TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
+# edit .env and provide PRIVATE_KEY, TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID,
+# and FLIPSIDE_API_KEY (optionally FLIPSIDE_API_URL)
 ```
 
 ## Quick Start
