@@ -30,7 +30,6 @@ class SecretFilter(logging.Filter):
         return True
 
 
-
 LOG_CONFIG = {
     "version": 1,
     "formatters": {"json": {"()": jsonlogger.JsonFormatter}},
