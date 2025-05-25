@@ -4,7 +4,7 @@ import asyncio
 from typing import Optional
 
 from engine import CopyEngine
-from gmgn import gmgn
+from gmgn_fallback import gmgn
 
 
 async def run_engine(ws_log: Optional[str] = None, dry_run: bool = False) -> None:
