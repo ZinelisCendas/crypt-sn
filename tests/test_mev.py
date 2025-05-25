@@ -38,10 +38,10 @@ aiohttp = sys.modules["aiohttp"]
 @pytest.mark.asyncio
 async def test_send_bundle_success(monkeypatch):
     monkeypatch.setattr(aiohttp, "ClientSession", lambda: FakeSession(200))
-    assert await send_bundle(b"tx")
+    assert await send_bundle("dHg=")
 
 
 @pytest.mark.asyncio
 async def test_send_bundle_fail(monkeypatch):
     monkeypatch.setattr(aiohttp, "ClientSession", lambda: FakeSession(500))
-    assert not await send_bundle(b"tx")
+    assert not await send_bundle("dHg=")

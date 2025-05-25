@@ -159,7 +159,7 @@ class CopyEngine:
         try:
             start_t = time.time()
             if JITO_RPC:
-                ok = await send_bundle(tx.serialize())
+                ok = await send_bundle(base64.b64encode(tx.serialize()).decode())
                 if ok:
                     sig = "bundle"
                 else:
