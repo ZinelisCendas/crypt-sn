@@ -25,6 +25,7 @@ from config import (
     JITO_RPC,
     STOP_LOSS_PCT,
     TAKE_PROFIT_PCT,
+    SOL_MINT,
 )
 from exec import JupiterExec, add_priority_fee
 from mev import send_bundle
@@ -42,6 +43,7 @@ class Position:
     sl: float
     tp: float
     src: str
+    limit_id: str | None = None
 
 
 class PositionBook:
@@ -178,6 +180,11 @@ class CopyEngine:
         SLIPPAGE_G.observe(0.0)
         await self.notif.send(f"BUY {amt} {token[:4]}… @ {price:.6f} SOL")
         self.pb.update(token, amt, price, "buy")
+        pos = self.pb.pos.get(token)
+        if pos:
+            limit_price = pos.entry * (1 + TAKE_PROFIT_PCT / 100)
+            res = await self.exec.create_limit(token, SOL_MINT, amt, limit_price)
+            pos.limit_id = res.get("limitOrderId")
         nav = self.pb.nav()
         NAV_G.set(nav)
         PNL_G.set((nav - self.pb.init) / self.pb.init * 100)
@@ -224,7 +231,7 @@ class CopyEngine:
                 if not price:
                     continue
                 self.pb.mark[token] = price
-                if price <= pos.sl or price >= pos.tp:
+                if price <= pos.sl:
                     pnl = price * pos.qty - pos.value
                     self.pb.init += pnl
                     self.pb.pos.pop(token, None)
