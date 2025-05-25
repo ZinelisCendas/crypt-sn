@@ -19,3 +19,5 @@ PYTH_HIST_URL = "https://hermes.pyth.network/api/historical_price/"
 RPC_URL = os.getenv("RPC_URL", "https://api.mainnet-beta.solana.com")
 JITO_RPC = os.getenv("JITO_RPC", "")
 SOL_MINT = "So11111111111111111111111111111111111111112"
+DRY_RUN = os.getenv("DRY_RUN", "false").lower() in {"1", "true", "yes"}
+SIM_SLIPPAGE_BPS = int(os.getenv("SIM_SLIPPAGE_BPS", 10))

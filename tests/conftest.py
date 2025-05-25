@@ -90,8 +90,28 @@ class Series(list):
     def std(self):
         return 1.0
 
+    def astype(self, t):
+        return Series([t(x) for x in self])
+
+    def to_numpy(self):
+        return self
+
 
 pd_mod.Series = Series
+
+
+class DataFrame(dict):
+    def __init__(self, data):
+        super().__init__(data)
+
+    def __getitem__(self, k):
+        return Series(self.get(k, []))
+
+    def to_numpy(self):
+        return list(self.values())
+
+
+pd_mod.DataFrame = DataFrame
 sys.modules.setdefault("pandas", pd_mod)
 
 # Stub dotenv

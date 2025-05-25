@@ -4,8 +4,11 @@ import logging
 import logging.config
 from pythonjsonlogger import jsonlogger
 
+import argparse
+import pandas as pd
 from config import PRIV_KEY
-from gmgn_wallet_bot import main
+from gmgn_wallet_bot import main as run_bot
+from helpers import calc_report
 
 
 class SecretFilter(logging.Filter):
@@ -40,5 +43,29 @@ LOG_CONFIG = {
 logging.config.dictConfig(LOG_CONFIG)
 logging.getLogger().addFilter(SecretFilter())
 
+
+def cli() -> None:
+    parser = argparse.ArgumentParser()
+    sub = parser.add_subparsers(dest="cmd", required=False)
+    run_p = sub.add_parser("run")
+    run_p.add_argument("--ws-log", default=None)
+    run_p.add_argument("--dry-run", action="store_true")
+
+    rep_p = sub.add_parser("report")
+    rep_p.add_argument("file")
+
+    args = parser.parse_args()
+    if args.cmd == "report":
+        df = pd.read_csv(
+            args.file,
+            header=None,
+            names=["ts", "address", "token", "side", "qty", "price", "nav_after"],
+        )
+        cagr, sharpe, dd = calc_report(df)
+        print(f"CAGR {cagr:.3f} Sharpe {sharpe:.3f} MaxDD {dd:.3f}")
+    else:
+        run_bot(args.ws_log, args.dry_run)
+
+
 if __name__ == "__main__":
-    main()
+    cli()
