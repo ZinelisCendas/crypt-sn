@@ -5,6 +5,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import conftest  # noqa:F401
 import types
 import base64
+from solders.signature import Signature
 import pytest
 
 from engine import CopyEngine
@@ -37,13 +38,20 @@ async def test_dry_run(monkeypatch, tmp_path):
     )
     monkeypatch.setattr("engine.add_priority_fee", lambda b: b)
     monkeypatch.setattr("engine.base58.b58decode", lambda b: b"")
+
+    class Tx:
+        message = b""
+        signatures: list = []
+
+        def __bytes__(self):
+            return b"tx"
+
+    monkeypatch.setattr("engine.Transaction.from_bytes", lambda b: Tx())
+    monkeypatch.setattr("engine.Transaction.populate", lambda msg, sigs: Tx())
     monkeypatch.setattr(
-        "engine.Transaction.deserialize",
-        lambda b: types.SimpleNamespace(
-            sign=lambda *a, **k: None, serialize=lambda: b"tx"
-        ),
+        "engine.Keypair.from_bytes",
+        lambda b: types.SimpleNamespace(sign_message=lambda m: Signature.default()),
     )
-    monkeypatch.setattr("engine.Keypair.from_bytes", lambda b: object())
     monkeypatch.setattr(
         "engine.Client",
         lambda *a, **k: types.SimpleNamespace(
