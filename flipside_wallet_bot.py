@@ -5,6 +5,8 @@ from typing import Optional
 
 from engine import CopyEngine
 from flipside import Flipside
+from flipside.errors import QueryRunExecutionError
+import logging
 from config import FLIPSIDE_API_KEY, FLIPSIDE_API_URL
 
 
@@ -28,14 +30,18 @@ def _trending_wallets(limit: int = 10) -> list[str]:
       SUM(pnl) DESC
     LIMIT {limit}
     """
-    res = client.query(
-        sql,
-        max_age_minutes=60,
-        cached=True,
-        page_number=1,
-        page_size=limit,
-        timeout_minutes=2,
-    )
+    try:
+        res = client.query(
+            sql,
+            max_age_minutes=60,
+            cached=True,
+            page_number=1,
+            page_size=limit,
+            timeout_minutes=2,
+        )
+    except QueryRunExecutionError as exc:  # pragma: no cover - logs only
+        logging.getLogger(__name__).warning("trending query failed: %s", exc)
+        return []
     return [r[0] for r in (res.records or [])]
 
 
