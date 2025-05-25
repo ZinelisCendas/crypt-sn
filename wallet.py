@@ -97,6 +97,7 @@ class WalletAnalyzer:
             len(trades),
         )
 
-    async def strong(self, addrs: List[str]):
+    async def strong(self, addrs: List[str]) -> List[WalletMetrics]:
+        """Return metrics for wallets that meet strength criteria."""
         res = await asyncio.gather(*(self._one(a) for a in addrs))
-        return [m.address for m in res if m and m.is_strong()]
+        return [m for m in res if m and m.is_strong()]

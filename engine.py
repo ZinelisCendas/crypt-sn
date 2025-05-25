@@ -28,7 +28,7 @@ from config import (
 from exec import JupiterExec, add_priority_fee
 from safety import SafetyChecker, SolscanAPI
 from sizing import kelly_size, pyth_atr, pyth_price
-from wallet import GmgnAPI
+from wallet import GmgnAPI, WalletAnalyzer, WalletMetrics
 
 
 @dataclass(slots=True)
@@ -127,10 +127,11 @@ class CopyEngine:
         self.safe = SafetyChecker(self.sol, self.notif)
         self.closed: Dict[str, float] = {}
         self.start_nav = self.pb.init
+        self.wallets: Dict[str, WalletMetrics] = {}
 
-    async def _size(self, token: str, sharpe: float, nav: float) -> float:
+    async def _size(self, token: str, sharpe: float, nav: float, trade_n: int) -> float:
         vol = await pyth_atr(token, notif=self.notif) or 0.05
-        stake = kelly_size(nav, sharpe, vol, 30)
+        stake = kelly_size(nav, sharpe, vol, trade_n)
         nav_vol_target = 0.10
         portfolio_est_vol = vol or 0.05
         stake = stake * (nav_vol_target / portfolio_est_vol)
@@ -140,10 +141,13 @@ class CopyEngine:
         token = ev["token"]
         price = float(ev["price"])
         nav = self.pb.nav()
+        addr = ev.get("address")
+        metrics = self.wallets.get(addr) if addr else None
+        trade_n = metrics.trades if metrics else 30
         pos = self.pb.pos.get(token)
         if pos and self.pb.mark.get(token, pos.entry) * pos.qty >= 0.3 * nav:
             return
-        stake = await self._size(token, 1.5, nav)  # assume sharpe proxy
+        stake = await self._size(token, 1.5, nav, trade_n)  # assume sharpe proxy
         amt = int(stake / price)
         quote = await self.exec.quote(token, token, amt)  # placeholder self swap
         tx_b64 = await self.exec.swap_tx(quote["data"][0])
@@ -236,4 +240,8 @@ class CopyEngine:
 
     async def run(self):
         start_http_server(9100)
+        wa = WalletAnalyzer(notif=self.notif)
+        metrics = await wa.strong(list(self.addrs))
+        self.wallets = {m.address: m for m in metrics}
+        self.addrs = set(self.wallets)
         await asyncio.gather(self._wallet_stream(), self._mark_positions())

@@ -89,7 +89,7 @@ graph TD
 
 | Path        | Class / Fn                   | Public API                   | Unit‑tests             |
 | ----------- | ---------------------------- | ---------------------------- | ---------------------- |
-| `wallet.py` | `WalletAnalyzer`             | `strong(addrs)` → List\[str] | `tests/test_wallet.py` |
+| `wallet.py` | `WalletAnalyzer`             | `strong(addrs)` → List\[WalletMetrics] | `tests/test_wallet.py` |
 | `safety.py` | `SafetyChecker`              | `is_safe(mint)` → bool       | fuzz via Hypothesis    |
 | `sizing.py` | `kelly_size(nav, edge, vol)` | returns stake value          | deterministic tests    |
 | `exec.py`   | `JupiterExec`                | `quote()`, `swap_tx()`       | mocked HTTP            |

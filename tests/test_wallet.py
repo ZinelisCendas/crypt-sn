@@ -18,4 +18,4 @@ async def test_strong(monkeypatch):
 
     monkeypatch.setattr(wa, "_one", fake_one)
     res = await wa.strong(["A", "B"])
-    assert res == ["A"]
+    assert res == [WalletMetrics("A", 1.5, 10.0, 0.6, 5)]

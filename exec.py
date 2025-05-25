@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import aiohttp
-import base64
 from typing import Any
 
 from config import JUPITER_URL
