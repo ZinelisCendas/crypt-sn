@@ -5,6 +5,11 @@ import types
 flipside_mod = types.ModuleType("flipside")
 
 
+class DummyClient:
+    def query(self, *a, **k):
+        return types.SimpleNamespace(records=[])
+
+
 class Dummy:
     def getWalletInfo(self, *a, **k):
         return {"data": {"address": "x", "totalRealizedProfit": 0}}
@@ -13,6 +18,7 @@ class Dummy:
         return {"data": []}
 
 
+flipside_mod.Flipside = lambda *a, **k: DummyClient()
 flipside_mod.flipside = lambda: Dummy()
 sys.modules.setdefault("flipside", flipside_mod)
 
@@ -182,6 +188,56 @@ sys.modules.setdefault("solana.keypair", sol_kp)
 
 sys.modules.setdefault("solana", types.ModuleType("solana"))
 sys.modules.setdefault("solana.rpc", types.ModuleType("solana.rpc"))
+
+# Stub networkx
+nx_mod = types.ModuleType("networkx")
+
+
+class G:
+    def add_nodes_from(self, *a, **k):
+        pass
+
+    def add_edge(self, *a, **k):
+        pass
+
+
+nx_mod.Graph = G
+nx_mod.algorithms = types.SimpleNamespace(
+    community=types.SimpleNamespace(louvain_communities=lambda g, resolution=1.0: [])
+)
+sys.modules.setdefault("networkx", nx_mod)
+
+# Stub solders
+solders_mod = types.ModuleType("solders")
+sig_mod = types.ModuleType("solders.signature")
+sig_mod.Signature = type("Signature", (), {"default": staticmethod(lambda: object())})
+keypair_mod = types.ModuleType("solders.keypair")
+keypair_mod.Keypair = type(
+    "Keypair",
+    (),
+    {
+        "from_bytes": staticmethod(lambda b: object()),
+        "from_secret_key": staticmethod(lambda b: object()),
+    },
+)
+instr_mod = types.ModuleType("solders.instruction")
+instr_mod.CompiledInstruction = object
+msg_mod = types.ModuleType("solders.message")
+msg_mod.Message = object
+tx_mod = types.ModuleType("solders.transaction")
+tx_mod.VersionedTransaction = type("VersionedTransaction", (), {})
+cb_mod = types.ModuleType("solders.compute_budget")
+cb_mod.ID = 0
+cb_mod.set_compute_unit_limit = lambda *a, **k: None
+cb_mod.set_compute_unit_price = lambda *a, **k: None
+
+sys.modules.setdefault("solders", solders_mod)
+sys.modules.setdefault("solders.signature", sig_mod)
+sys.modules.setdefault("solders.keypair", keypair_mod)
+sys.modules.setdefault("solders.instruction", instr_mod)
+sys.modules.setdefault("solders.message", msg_mod)
+sys.modules.setdefault("solders.transaction", tx_mod)
+sys.modules.setdefault("solders.compute_budget", cb_mod)
 
 # Stub numpy
 np_mod = types.ModuleType("numpy")

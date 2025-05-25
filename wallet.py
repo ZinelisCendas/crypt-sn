@@ -6,11 +6,11 @@ import math
 from dataclasses import dataclass
 from typing import Any, Dict, List
 
-import aiohttp
+import os
 import pandas as pd
 import numpy as np
 from sklearn.linear_model import LinearRegression
-from flipside_fallback import flipside
+from flipside import Flipside
 import networkx as nx
 
 from helpers import retry
@@ -52,29 +52,39 @@ def _corr(a: Dict[str, float], b: Dict[str, float]) -> float:
     return cov / (var1**0.5 * var2**0.5)
 
 
-class FlipsideAPI:  # minimal wrapper
+class FlipsideAPI:  # minimal wrapper over official SDK
     def __init__(self, notif: Any | None = None):
-        self.g = flipside()
-        self.http = aiohttp.ClientSession()
+        self.client = Flipside(
+            os.getenv("FLIPSIDE_API_KEY"), "https://api-v2.flipsidecrypto.xyz"
+        )
         self.notif = notif
 
     async def info(self, addr: str, tf: str = "30d"):
-        loop = asyncio.get_running_loop()
-        return await retry(
-            lambda: loop.run_in_executor(None, self.g.getWalletInfo, addr, tf),
-            name="flipside.info",
-            notif=self.notif,
+        sql = (
+            "SELECT address, totalRealizedProfit FROM wallet_info "
+            f"WHERE address = LOWER('{addr}')"
         )
 
+        def run() -> dict | None:
+            res = self.client.query(sql, max_age_minutes=60)
+            if res.records:
+                row = res.records[0]
+                return {"data": {"address": row[0], "totalRealizedProfit": row[1]}}
+            return None
+
+        return await retry(run, name="flipside.info", notif=self.notif)
+
     async def trades(self, addr: str, tf: str = "30d"):
-        url = f"https://flipside.ai/stats/wallet/tx?address={addr}&period={tf}"
+        sql = (
+            "SELECT block_timestamp, pnl FROM wallet_trades "
+            f"WHERE address = LOWER('{addr}')"
+        )
 
-        async def go():
-            async with self.http.get(url) as r:
-                r.raise_for_status()
-                return (await r.json()).get("data", [])
+        def run() -> list:
+            res = self.client.query(sql, max_age_minutes=10)
+            return [{"timestamp": row[0], "pnl": row[1]} for row in (res.records or [])]
 
-        return await retry(go, name="flipside.trades", notif=self.notif)
+        return await retry(run, name="flipside.trades", notif=self.notif)
 
 
 class WalletAnalyzer:
