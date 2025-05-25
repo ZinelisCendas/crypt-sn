@@ -9,6 +9,7 @@ solana
 
 # Dev dependencies
 pytest
+pytest-asyncio>=0.23  
 ruff
 mypy
 black
