@@ -13,6 +13,7 @@ pip install -r requirements.txt
 ```bash
 cp .env.template .env
 # edit .env and provide PRIVATE_KEY, TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
+# optional HELIUS_API_KEY for priority fee estimates
 ```
 
 ## Quick Start

@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import aiohttp
-import base64
 from typing import Any
 
-from config import JUPITER_URL
+from solders.compute_budget import set_compute_unit_limit, set_compute_unit_price
+from solana.transaction import Transaction
+
+from config import HELIUS_API_KEY, JUPITER_URL
 from helpers import retry
 
 
@@ -59,13 +61,20 @@ class JupiterExec:
 
 async def get_priority_fee() -> int:
     url = "https://api.helius.xyz/v1/getPriorityFeeEstimate"
+    headers = {"api-key": HELIUS_API_KEY}
     async with aiohttp.ClientSession() as s:
-        async with s.get(f"{url}?transaction_type=swap") as r:
+        async with s.get(f"{url}?transaction_type=swap", headers=headers) as r:
             data = await r.json()
             return int(data.get("priorityFeeEstimate", 1000))
 
 
 async def add_priority_fee(tx_bytes: bytes) -> bytes:
     lamports_per_cu = await get_priority_fee()
-    _ = lamports_per_cu  # placeholder for real mutation
-    return tx_bytes
+    try:
+        tx = Transaction.deserialize(tx_bytes)
+        ix_price = set_compute_unit_price(lamports_per_cu)
+        ix_limit = set_compute_unit_limit(1_400_000)
+        new_tx = Transaction().add(ix_limit, ix_price, *tx.instructions)
+        return new_tx.serialize()
+    except Exception:  # noqa: BLE001
+        return tx_bytes

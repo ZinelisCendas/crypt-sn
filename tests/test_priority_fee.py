@@ -3,7 +3,6 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import conftest  # noqa:F401
-import asyncio
 import pytest
 from exec import get_priority_fee
 
@@ -15,7 +14,7 @@ class FakeSession:
     async def __aexit__(self, *a):
         pass
 
-    def get(self, url):
+    def get(self, url, *a, **k):
         class Resp:
             async def json(self):
                 return {"priorityFeeEstimate": 42}
