@@ -9,11 +9,15 @@ from config import FLIPSIDE_API_KEY, FLIPSIDE_API_URL
 
 
 def _trending_wallets(limit: int = 10) -> list[str]:
-    """Return top wallets ranked by 30-day PnL using the public tables."""
+    """Return top wallets ranked by 30-day PnL.
+
+    Uses ``solana.core.fact_transactions`` and the ``signer`` and ``pnl``
+    columns documented in Flipside's public tables.
+    """
     client = Flipside(FLIPSIDE_API_KEY, FLIPSIDE_API_URL)
     sql = f"""
     SELECT
-      wallet_address AS address
+      signer AS address
     FROM
       solana.core.fact_transactions
     WHERE
