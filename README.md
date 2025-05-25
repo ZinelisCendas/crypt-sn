@@ -12,7 +12,7 @@ python gmgn_wallet_bot.py mirror --seed trending --min-profit 5
 
 ## Running Tests
 
-Execute the unit tests with `pytest`:
+From the repository root run all test files with:
 
 ```bash
 pytest -q
