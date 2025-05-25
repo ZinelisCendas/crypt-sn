@@ -35,7 +35,13 @@ async def test_cluster_prune(monkeypatch):
                 10.0,
                 0.6,
                 5,
-                {"d1": 1, "d2": 2, "d3": 3, "d4": 4, "d5": 5},
+                {
+                    "d1": 1,
+                    "d2": 2,
+                    "d3": 3,
+                    "d4": 4,
+                    "d5": 5,
+                },
             )
         if addr == "B":
             return WalletMetrics(
@@ -44,7 +50,13 @@ async def test_cluster_prune(monkeypatch):
                 9.0,
                 0.6,
                 5,
-                {"d1": 2, "d2": 4, "d3": 6, "d4": 8, "d5": 10},
+                {
+                    "d1": 0.1619981,
+                    "d2": 2.57616578,
+                    "d3": 3.5398093,
+                    "d4": 3.59331787,
+                    "d5": 4.26678784,
+                },
             )
         return WalletMetrics(
             addr,
@@ -52,7 +64,13 @@ async def test_cluster_prune(monkeypatch):
             8.0,
             0.6,
             5,
-            {"d1": -1, "d2": -1, "d3": -1, "d4": -1, "d5": -1},
+            {
+                "d1": 0.45128402,
+                "d2": -1.68405999,
+                "d3": -1.1601701,
+                "d4": 1.35010682,
+                "d5": -0.33128317,
+            },
         )
 
     monkeypatch.setattr(wa, "_one", fake_one)
