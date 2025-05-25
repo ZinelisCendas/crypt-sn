@@ -31,7 +31,7 @@ from exec import JupiterExec, add_priority_fee
 from mev import send_bundle
 from safety import SafetyChecker, SolscanAPI
 from sizing import kelly_size, pyth_atr, pyth_price
-from wallet import GmgnAPI
+from wallet import GmgnAPI, WalletMetrics
 
 
 @dataclass(slots=True)
@@ -130,11 +130,14 @@ class CopyEngine:
         self.pb = PositionBook(100)
         self.safe = SafetyChecker(self.sol, self.notif)
         self.closed: Dict[str, float] = {}
+        self.metrics: Dict[str, WalletMetrics] = {}
         self.start_nav = self.pb.init
 
-    async def _size(self, token: str, sharpe: float, nav: float) -> float:
+    async def _size(
+        self, token: str, sharpe: float, nav: float, trades: int = 30
+    ) -> float:
         vol = await pyth_atr(token, notif=self.notif) or 0.05
-        stake = kelly_size(nav, sharpe, vol, 30)
+        stake = kelly_size(nav, sharpe, vol, trades)
         nav_vol_target = 0.10
         portfolio_est_vol = vol or 0.05
         stake = stake * (nav_vol_target / portfolio_est_vol)
@@ -147,7 +150,10 @@ class CopyEngine:
         pos = self.pb.pos.get(token)
         if pos and self.pb.mark.get(token, pos.entry) * pos.qty >= 0.3 * nav:
             return
-        stake = await self._size(token, 1.5, nav)  # assume sharpe proxy
+        wallet = ev.get("address")
+        metrics = self.metrics.get(wallet) if wallet else None
+        trades = metrics.trades if metrics else 30
+        stake = await self._size(token, 1.5, nav, trades)  # assume sharpe proxy
         amt = int(stake / price)
         quote = await self.exec.quote(token, token, amt)  # placeholder self swap
         tx_b64 = await self.exec.swap_tx(quote["data"][0])
