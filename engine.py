@@ -16,7 +16,7 @@ import aiohttp
 import base58
 import websockets
 from prometheus_client import Gauge, Histogram, start_http_server
-from solana.keypair import Keypair
+from solders.keypair import Keypair
 from solana.rpc.api import Client
 from solana.transaction import Transaction
 
@@ -222,7 +222,7 @@ class CopyEngine:
         if not self.dry:
             tx_bytes = base64.b64decode(tx_b64)
             tx_bytes = await add_priority_fee(tx_bytes)
-            kp = Keypair.from_secret_key(base58.b58decode(PRIV_KEY))
+            kp = Keypair.from_bytes(base58.b58decode(PRIV_KEY))
             tx = Transaction.deserialize(tx_bytes)
             tx.sign(kp)
             client = Client(RPC_URL)
