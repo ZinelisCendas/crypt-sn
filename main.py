@@ -41,6 +41,8 @@ import math
 import time
 import statistics
 import logging
+import base64
+import base58
 from typing import Dict, List, Sequence
 from dataclasses import dataclass
 
@@ -49,6 +51,9 @@ import websockets
 import pandas as pd
 from dotenv import load_dotenv
 from prometheus_client import Gauge, start_http_server
+from solana.rpc.api import Client
+from solana.transaction import Transaction
+from solana.keypair import Keypair
 
 try:
     from gmgn import gmgn
@@ -68,6 +73,7 @@ ATR_LOOKBACK_MIN = int(os.getenv("ATR_LOOKBACK_MIN", 1440))
 PRUNE_INTERVAL_H = float(os.getenv("PRUNE_INTERVAL_H", 6))
 JUPITER_URL = "https://quote-api.jup.ag"
 PYTH_HIST_URL = "https://hermes.pyth.network/api/historical_price/"
+RPC_URL = os.getenv("RPC_URL", "https://api.mainnet-beta.solana.com")
 
 
 # ------------------------ models --------------------------
@@ -319,8 +325,20 @@ class CopyEngine:
         stake = await self._size(token, 1.5, nav)  # assume sharpe proxy 1.5 for now
         amt = int(stake / price)
         quote = await self.exec.quote(token, token, amt)  # self‑swap for placeholder
-        _ = await self.exec.swap_tx(quote["data"][0])
-        # send tx via RPC (omitted) with priority fee
+        tx_b64 = await self.exec.swap_tx(quote["data"][0])
+
+        tx_bytes = base64.b64decode(tx_b64)
+        tx_bytes = add_priority_fee(tx_bytes)
+        kp = Keypair.from_secret_key(base58.b58decode(PRIV_KEY))
+        tx = Transaction.deserialize(tx_bytes)
+        tx.sign(kp)
+        client = Client(RPC_URL)
+        try:
+            sig = client.send_raw_transaction(tx.serialize()).get("result")
+            logging.getLogger(__name__).info("tx %s sent", sig)
+        except Exception as exc:
+            logging.getLogger(__name__).warning("tx failure: %s", exc)
+
         await self.notif.send(f"BUY {amt} {token[:4]}… @ {price:.6f} SOL")
 
     async def _wallet_stream(self):
