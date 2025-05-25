@@ -59,7 +59,10 @@ class FlipsideAPI:  # minimal wrapper over official SDK
     async def _query(self, sql: str, *, max_age_minutes: int = 60):
         """Run a blocking SDK query in a thread."""
         return await asyncio.to_thread(
-            self.client.query, sql, max_age_minutes=max_age_minutes
+            self.client.query,
+            sql,
+            max_age_minutes=max_age_minutes,
+            cached=True,
         )
 
     async def info(self, addr: str, tf: str = "30d"):
