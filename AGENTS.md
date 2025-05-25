@@ -47,7 +47,8 @@ Automate Solana copy‑trading on *free* public APIs while **maximising risk‑a
 ```bash
 pip install -r requirements.txt   # aiohttp websockets pandas prometheus-client gmgnai-wrapper
 cp .env.template .env             # fill PRIVATE_KEY etc.
-python gmgn_wallet_bot.py mirror --seed trending --min-profit 5
+python main.py                    # starts trending copy trading
+pytest tests/smoke.py             # optional smoke test
 ```
 
 Smoke‑test: `pytest tests/smoke.py` ⟶ should finish < 10 s and emit NAV gauge.
@@ -93,6 +94,7 @@ graph TD
 | `sizing.py` | `kelly_size(nav, edge, vol)` | returns stake value          | deterministic tests    |
 | `exec.py`   | `JupiterExec`                | `quote()`, `swap_tx()`       | mocked HTTP            |
 | `engine.py` | `CopyEngine`                 | `.run()` main loop           | integration smoke      |
+| `cli.py`    | `main()`                     | CLI entrypoint               | smoke test             |
 
 All functions are **pure** except I/O boundaries; follow *functional‑core / imperative‑shell* pattern.
 
@@ -135,9 +137,9 @@ All functions are **pure** except I/O boundaries; follow *functional‑core / im
 ## 8 Contribution Guide *(lightweight)*
 
 * Follow **Conventional Commits** (`feat:`, `fix:`).
-* PR must pass: `black`, `mypy`, `pytest -q`, `ruff`.
+* PR must pass: `black`, `mypy`, `ruff`, `pytest -q` (runs smoke tests).
 * Open an **issue** before big refactors.
-* Add / update **unit tests** for any public function.
+* Add / update **unit tests** for any public function; smoke tests live in `tests/smoke.py`.
 
 Useful reference: HolisticAI contributor guide ([holisticai.readthedocs.io](https://holisticai.readthedocs.io/en/latest/contributor/index.html?utm_source=chatgpt.com)).
 
