@@ -201,16 +201,43 @@ nx_mod = types.ModuleType("networkx")
 
 
 class G:
-    def add_nodes_from(self, *a, **k):
-        pass
+    def __init__(self):
+        self.nodes = set()
+        self.edges = []
 
-    def add_edge(self, *a, **k):
-        pass
+    def add_nodes_from(self, nodes):
+        self.nodes.update(nodes)
+
+    def add_edge(self, a, b):
+        self.edges.append((a, b))
+
+
+def _louvain(g, resolution=1.0):
+    visited = set()
+    comps = []
+    adj = {n: set() for n in g.nodes}
+    for a, b in g.edges:
+        adj.setdefault(a, set()).add(b)
+        adj.setdefault(b, set()).add(a)
+    for n in g.nodes:
+        if n in visited:
+            continue
+        stack = [n]
+        comp = set()
+        while stack:
+            cur = stack.pop()
+            if cur in visited:
+                continue
+            visited.add(cur)
+            comp.add(cur)
+            stack.extend(adj.get(cur, []))
+        comps.append(comp)
+    return comps
 
 
 nx_mod.Graph = G
 nx_mod.algorithms = types.SimpleNamespace(
-    community=types.SimpleNamespace(louvain_communities=lambda g, resolution=1.0: [])
+    community=types.SimpleNamespace(louvain_communities=_louvain)
 )
 sys.modules.setdefault("networkx", nx_mod)
 
@@ -219,28 +246,137 @@ solders_mod = types.ModuleType("solders")
 sig_mod = types.ModuleType("solders.signature")
 sig_mod.Signature = type("Signature", (), {"default": staticmethod(lambda: object())})
 keypair_mod = types.ModuleType("solders.keypair")
+
+
+class Pubkey:
+    @staticmethod
+    def default():
+        return Pubkey()
+
+
+pubkey_mod = types.ModuleType("solders.pubkey")
+pubkey_mod.Pubkey = Pubkey
+
+hash_mod = types.ModuleType("solders.hash")
+
+
+class Hash:
+    @staticmethod
+    def new_unique():
+        return "hash"
+
+
+hash_mod.Hash = Hash
+
 keypair_mod.Keypair = type(
     "Keypair",
     (),
     {
         "from_bytes": staticmethod(lambda b: object()),
         "from_secret_key": staticmethod(lambda b: object()),
+        "pubkey": lambda self=None: Pubkey(),
     },
 )
 instr_mod = types.ModuleType("solders.instruction")
-instr_mod.CompiledInstruction = object
+
+
+class Instruction:
+    def __init__(self, program_id, data, accounts):
+        self.program_id = program_id
+        self.data = data
+        self.accounts = accounts
+
+
+class CompiledInstruction:
+    def __init__(self, program_id_index, data, accounts):
+        self.program_id_index = program_id_index
+        self.data = data
+        self.accounts = accounts
+
+
+instr_mod.Instruction = Instruction
+instr_mod.CompiledInstruction = CompiledInstruction
 msg_mod = types.ModuleType("solders.message")
-msg_mod.Message = object
+
+
+class Message:
+    def __init__(self, instructions, blockhash):
+        self.instructions = instructions
+        self.recent_blockhash = blockhash
+        self.account_keys = []
+        self.header = types.SimpleNamespace(
+            num_required_signatures=1,
+            num_readonly_signed_accounts=0,
+            num_readonly_unsigned_accounts=0,
+        )
+
+    @classmethod
+    def new_with_blockhash(cls, instructions, payer, blockhash):
+        msg = cls(instructions, blockhash)
+        msg.account_keys = [payer]
+        return msg
+
+    @classmethod
+    def new_with_compiled_instructions(
+        cls,
+        n_req,
+        n_readonly_sig,
+        n_readonly_unsig,
+        keys,
+        blockhash,
+        instructions,
+    ):
+        msg = cls(instructions, blockhash)
+        msg.account_keys = keys
+        msg.header = types.SimpleNamespace(
+            num_required_signatures=n_req,
+            num_readonly_signed_accounts=n_readonly_sig,
+            num_readonly_unsigned_accounts=n_readonly_unsig,
+        )
+        return msg
+
+    def program_id(self, idx):
+        return "ComputeBudget111111111111111111111111111111"
+
+
+msg_mod.Message = Message
 tx_mod = types.ModuleType("solders.transaction")
-tx_mod.VersionedTransaction = type("VersionedTransaction", (), {})
+_tx_store = {}
+
+
+class VersionedTransaction:
+    def __init__(self, message, signers):
+        self.message = message
+        self.signatures = signers
+
+    def __bytes__(self):
+        _tx_store["last"] = self
+        return b"tx"
+
+    @classmethod
+    def from_bytes(cls, b):
+        return _tx_store.get("last", VersionedTransaction(Message([], None), []))
+
+    @staticmethod
+    def populate(message, signatures):
+        return VersionedTransaction(message, signatures)
+
+
+tx_mod.VersionedTransaction = VersionedTransaction
 cb_mod = types.ModuleType("solders.compute_budget")
-cb_mod.ID = 0
-cb_mod.set_compute_unit_limit = lambda *a, **k: None
-cb_mod.set_compute_unit_price = lambda *a, **k: None
+cb_mod.ID = "ComputeBudget111111111111111111111111111111"
+cb_mod.set_compute_unit_limit = lambda lim: types.SimpleNamespace(
+    data=b"\x02" + int(lim).to_bytes(8, "little")
+)
+cb_mod.set_compute_unit_price = lambda fee: types.SimpleNamespace(
+    data=b"\x03" + int(fee).to_bytes(8, "little")
+)
 
 sys.modules.setdefault("solders", solders_mod)
 sys.modules.setdefault("solders.signature", sig_mod)
 sys.modules.setdefault("solders.keypair", keypair_mod)
+sys.modules.setdefault("solders.pubkey", pubkey_mod)
+sys.modules.setdefault("solders.hash", hash_mod)
 sys.modules.setdefault("solders.instruction", instr_mod)
 sys.modules.setdefault("solders.message", msg_mod)
 sys.modules.setdefault("solders.transaction", tx_mod)
