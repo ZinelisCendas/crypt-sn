@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import logging.config
 
 from config import PRIV_KEY
 from gmgn_wallet_bot import main
@@ -28,7 +29,16 @@ class SecretFilter(logging.Filter):
         return True
 
 
-logging.basicConfig(level=logging.INFO)
+from pythonjsonlogger import jsonlogger
+
+LOG_CONFIG = {
+    "version": 1,
+    "formatters": {"json": {"()": jsonlogger.JsonFormatter}},
+    "handlers": {"console": {"class": "logging.StreamHandler", "formatter": "json"}},
+    "root": {"handlers": ["console"], "level": "INFO"},
+}
+
+logging.config.dictConfig(LOG_CONFIG)
 logging.getLogger().addFilter(SecretFilter())
 
 if __name__ == "__main__":

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import aiohttp
+import base64
 from typing import Any
 
 from config import JUPITER_URL
@@ -34,7 +35,37 @@ class JupiterExec:
 
         return await retry(go, name="jup.swap", notif=self.notif)
 
+    async def create_limit(
+        self, mint_in: str, mint_out: str, amount: int, limit_price: float
+    ):
+        url = f"{JUPITER_URL}/v6/limit"
 
-def add_priority_fee(tx_bytes: bytes, lamports_per_cu: int = 1000) -> bytes:
-    # placeholder – would insert ComputeBudget ix before first ix
+        async def go():
+            async with self.http.post(
+                url,
+                json={
+                    "inputMint": mint_in,
+                    "outputMint": mint_out,
+                    "amount": amount,
+                    "limitPrice": limit_price,
+                    "clientId": "bot",
+                },
+            ) as r:
+                r.raise_for_status()
+                return await r.json()
+
+        return await retry(go, name="jup.limit", notif=self.notif)
+
+
+async def get_priority_fee() -> int:
+    url = "https://api.helius.xyz/v1/getPriorityFeeEstimate"
+    async with aiohttp.ClientSession() as s:
+        async with s.get(f"{url}?transaction_type=swap") as r:
+            data = await r.json()
+            return int(data.get("priorityFeeEstimate", 1000))
+
+
+async def add_priority_fee(tx_bytes: bytes) -> bytes:
+    lamports_per_cu = await get_priority_fee()
+    _ = lamports_per_cu  # placeholder for real mutation
     return tx_bytes

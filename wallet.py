@@ -2,11 +2,14 @@ from __future__ import annotations
 
 import asyncio
 import time
+import math
 from dataclasses import dataclass
 from typing import Any, List
 
 import aiohttp
 import pandas as pd
+import numpy as np
+from sklearn.linear_model import LinearRegression
 from gmgn import gmgn
 
 from helpers import retry
@@ -21,7 +24,13 @@ class WalletMetrics:
     trades: int
 
     def is_strong(self) -> bool:
-        return self.sharpe > 1.2 and self.win_rate * 100 >= 55 and self.realised > 0
+        return self.sharpe > 1.0 and self.win_rate * 100 >= 55 and self.realised > 0
+
+
+def _lower_conf_sharpe(series: pd.Series, alpha: float = 0.05) -> float:
+    sharpe = series.mean() / (series.std(ddof=1) or 1e-9)
+    se = series.std(ddof=1) / math.sqrt(len(series))
+    return sharpe - 1.645 * se
 
 
 class GmgnAPI:  # minimal wrapper
@@ -68,14 +77,21 @@ class WalletAnalyzer:
             if float(t["pnl"]) > 0:
                 wins += 1
         if len(pnl_by_day) < 2:
-            sharpe = 0.0
-        else:
-            series = pd.Series(list(pnl_by_day.values()))
-            sharpe = series.mean() / max(series.std(), 1e-6)
+            return None
+        series = pd.Series(list(pnl_by_day.values()))
+        lb95 = _lower_conf_sharpe(series)
+
+        cum = series.cumsum().to_numpy()
+        X = np.arange(len(cum)).reshape(-1, 1)
+        model = LinearRegression().fit(X, cum)
+        slope, r2 = model.coef_[0], model.score(X, cum)
+        if slope <= 0 or r2 < 0.4:
+            return None
+
         win_rate = wins / max(1, len(trades))
         return WalletMetrics(
             info["data"]["address"],
-            float(sharpe),
+            float(lb95),
             float(info["data"]["totalRealizedProfit"]),
             win_rate,
             len(trades),

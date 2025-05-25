@@ -52,8 +52,10 @@ async def pyth_price(mint: str, notif: Any | None = None) -> float:
         return float(prices[-1]) if prices else 0.0
 
 
-def kelly_size(nav: float, edge: float, vol: float) -> float:
-    f = 0.5 * max(edge, 0.0)
+def kelly_size(nav: float, edge: float, vol: float, n: int) -> float:
+    kelly_raw = max(edge, 0) / (vol**2)
+    credibility = n / (n + 20)
+    f = 0.5 * kelly_raw * credibility
     f = min(f, MAX_KELLY_F)
     stake_pct = f / max(vol, 1e-3)
-    return max(0.0, min(stake_pct, 0.25)) * nav
+    return min(stake_pct, 0.25) * nav
