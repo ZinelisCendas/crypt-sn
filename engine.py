@@ -6,7 +6,7 @@ import json
 import logging
 import time
 from dataclasses import dataclass
-from typing import Dict, Sequence
+from typing import Any, Dict, Sequence, cast
 
 import aiohttp
 import base58
@@ -101,7 +101,9 @@ class Notifier:
             return
         try:
             await aiohttp.ClientSession().post(
-                self.api, json={"chat_id": self.chat, "text": msg}, timeout=10
+                self.api,
+                json={"chat_id": self.chat, "text": msg},
+                timeout=aiohttp.ClientTimeout(total=10),
             )
         except Exception as exc:  # noqa: BLE001
             logging.getLogger(__name__).warning("Notifier error: %s", exc)
@@ -144,7 +146,8 @@ class CopyEngine:
         tx.sign(kp)
         client = Client(RPC_URL)
         try:
-            sig = client.send_raw_transaction(tx.serialize()).get("result")
+            resp = cast(dict[str, Any], client.send_raw_transaction(tx.serialize()))
+            sig = resp["result"]
             logging.getLogger(__name__).info("tx %s sent", sig)
         except Exception as exc:  # noqa: BLE001
             logging.getLogger(__name__).warning("tx failure: %s", exc)
