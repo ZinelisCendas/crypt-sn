@@ -24,7 +24,14 @@ def _trending_wallets(limit: int = 10) -> list[str]:
       SUM(pnl) DESC
     LIMIT {limit}
     """
-    res = client.query(sql, page_number=1, page_size=limit)
+    res = client.query(
+        sql,
+        max_age_minutes=60,
+        cached=True,
+        page_number=1,
+        page_size=limit,
+        timeout_minutes=2,
+    )
     return [r[0] for r in (res.records or [])]
 
 
