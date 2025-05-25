@@ -56,29 +56,51 @@ class FlipsideAPI:  # minimal wrapper over official SDK
         self.client = Flipside(FLIPSIDE_API_KEY, FLIPSIDE_API_URL)
         self.notif = notif
 
-    async def info(self, addr: str, tf: str = "30d"):
-        sql = (
-            "SELECT address, totalRealizedProfit FROM wallet_info "
-            f"WHERE address = LOWER('{addr}')"
+    async def _query(self, sql: str, *, max_age_minutes: int = 60):
+        """Run a blocking SDK query in a thread."""
+        return await asyncio.to_thread(
+            self.client.query, sql, max_age_minutes=max_age_minutes
         )
 
-        def run() -> dict | None:
-            res = self.client.query(sql, max_age_minutes=60)
+    async def info(self, addr: str, tf: str = "30d"):
+        sql = f"""
+        WITH pnl AS (
+          SELECT DATE_TRUNC('day', block_timestamp) AS day, SUM(pnl) AS daily_pnl
+          FROM solana.core.fact_transactions
+          WHERE wallet_address = LOWER('{addr}')
+            AND block_timestamp >= CURRENT_TIMESTAMP - INTERVAL '{tf}'
+          GROUP BY 1
+        )
+        SELECT '{addr}' AS address,
+               SUM(daily_pnl) AS total_realized_profit
+        FROM pnl
+        """
+
+        async def run() -> dict | None:
+            res = await self._query(sql, max_age_minutes=60)
             if res.records:
                 row = res.records[0]
-                return {"data": {"address": row[0], "totalRealizedProfit": row[1]}}
+                return {
+                    "data": {
+                        "address": row[0],
+                        "totalRealizedProfit": row[1],
+                    }
+                }
             return None
 
         return await retry(run, name="flipside.info", notif=self.notif)
 
     async def trades(self, addr: str, tf: str = "30d"):
-        sql = (
-            "SELECT block_timestamp, pnl FROM wallet_trades "
-            f"WHERE address = LOWER('{addr}')"
-        )
+        sql = f"""
+        SELECT block_timestamp, pnl
+        FROM solana.core.fact_transactions
+        WHERE wallet_address = LOWER('{addr}')
+          AND block_timestamp >= CURRENT_TIMESTAMP - INTERVAL '{tf}'
+        ORDER BY block_timestamp ASC
+        """
 
-        def run() -> list:
-            res = self.client.query(sql, max_age_minutes=10)
+        async def run() -> list:
+            res = await self._query(sql, max_age_minutes=10)
             return [{"timestamp": row[0], "pnl": row[1]} for row in (res.records or [])]
 
         return await retry(run, name="flipside.trades", notif=self.notif)
