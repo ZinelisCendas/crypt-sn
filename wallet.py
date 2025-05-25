@@ -66,11 +66,16 @@ class FlipsideAPI:  # minimal wrapper over official SDK
         )
 
     async def info(self, addr: str, tf: str = "30d"):
+        """Return wallet profit info.
+
+        Uses ``solana.core.fact_transactions`` and the ``signer`` and ``pnl``
+        columns from Flipside's public tables.
+        """
         sql = f"""
         WITH pnl AS (
           SELECT DATE_TRUNC('day', block_timestamp) AS day, SUM(pnl) AS daily_pnl
           FROM solana.core.fact_transactions
-          WHERE wallet_address = LOWER('{addr}')
+          WHERE signer = LOWER('{addr}')
             AND block_timestamp >= CURRENT_TIMESTAMP - INTERVAL '{tf}'
           GROUP BY 1
         )
@@ -94,10 +99,15 @@ class FlipsideAPI:  # minimal wrapper over official SDK
         return await retry(run, name="flipside.info", notif=self.notif)
 
     async def trades(self, addr: str, tf: str = "30d"):
+        """Return per-transaction PnL series.
+
+        Uses ``solana.core.fact_transactions`` with ``signer`` and ``pnl``
+        columns from the Flipside dataset.
+        """
         sql = f"""
         SELECT block_timestamp, pnl
         FROM solana.core.fact_transactions
-        WHERE wallet_address = LOWER('{addr}')
+        WHERE signer = LOWER('{addr}')
           AND block_timestamp >= CURRENT_TIMESTAMP - INTERVAL '{tf}'
         ORDER BY block_timestamp ASC
         """
