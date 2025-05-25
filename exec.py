@@ -94,6 +94,9 @@ class JupiterExec:
 
         return await retry(go, name="jup.limit", notif=self.notif)
 
+    async def close(self) -> None:
+        await self.http.close()
+
 
 async def get_priority_fee() -> int:
     """Return the estimated micro-lamports per compute unit for swaps."""

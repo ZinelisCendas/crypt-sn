@@ -37,7 +37,17 @@ class QueryRunExecutionError(Exception):
     pass
 
 
+class ApiError(Exception):
+    pass
+
+
+class ServerError(Exception):
+    pass
+
+
 flipside_err_mod.QueryRunExecutionError = QueryRunExecutionError
+flipside_err_mod.ApiError = ApiError
+flipside_err_mod.ServerError = ServerError
 sys.modules.setdefault("flipside.errors", flipside_err_mod)
 
 # Stub aiohttp
