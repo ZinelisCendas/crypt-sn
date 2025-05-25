@@ -3,7 +3,10 @@ from __future__ import annotations
 import aiohttp
 from typing import Any
 
-from config import JUPITER_URL
+from solders.keypair import Keypair
+import base58
+
+from config import JUPITER_URL, COOP_URL, PRIV_KEY
 from helpers import retry
 
 
@@ -11,28 +14,64 @@ class JupiterExec:
     def __init__(self, notif: Any | None = None):
         self.http = aiohttp.ClientSession()
         self.notif = notif
+        if PRIV_KEY:
+            self.addr = str(Keypair.from_bytes(base58.b58decode(PRIV_KEY)).pubkey())
+        else:
+            self.addr = ""
+        self._last: dict | None = None
 
     async def quote(self, mint_in: str, mint_out: str, amount: int):
-        url = f"{JUPITER_URL}/v6/quote?inputMint={mint_in}&outputMint={mint_out}&amount={amount}&slippageBps=50"
+        url = f"{COOP_URL}/defi/router/v1/sol/tx/get_swap_route"
+        params = {
+            "token_in_address": mint_in,
+            "token_out_address": mint_out,
+            "in_amount": str(amount),
+            "from_address": self.addr,
+            "slippage": "0.5",
+            "swap_mode": "ExactIn",
+        }
 
         async def go():
-            async with self.http.get(url) as r:
+            async with self.http.get(url, params=params) as r:
+                r.raise_for_status()
+                data = await r.json()
+                self._last = data.get("data", {})
+                return {"data": [self._last.get("quote", {})]}
+
+        return await retry(go, name="coop.quote", notif=self.notif)
+
+    async def swap_tx(self, route: dict):
+        if not self._last:
+            raise RuntimeError("quote() must be called before swap_tx()")
+        return self._last.get("raw_tx", {}).get("swapTransaction", "")
+
+    async def submit_tx(self, signed_tx_b64: str, anti_mev: bool = False):
+        url = f"{COOP_URL}/txproxy/v1/send_transaction"
+
+        async def go():
+            async with self.http.post(
+                url,
+                json={
+                    "chain": "sol",
+                    "signedTx": signed_tx_b64,
+                    "isAntiMev": anti_mev,
+                },
+            ) as r:
                 r.raise_for_status()
                 return await r.json()
 
-        return await retry(go, name="jup.quote", notif=self.notif)
+        return await retry(go, name="coop.send", notif=self.notif)
 
-    async def swap_tx(self, route: dict):
+    async def tx_status(self, tx_hash: str, last_valid_height: int):
+        url = f"{COOP_URL}/defi/router/v1/sol/tx/get_transaction_status"
+        params = {"hash": tx_hash, "last_valid_height": str(last_valid_height)}
+
         async def go():
-            async with self.http.post(
-                f"{JUPITER_URL}/v6/swap",
-                json={"route": route, "userPublicKey": route["inAmountAddress"]},
-            ) as r:
+            async with self.http.get(url, params=params) as r:
                 r.raise_for_status()
-                tx = await r.json()
-                return tx["swapTransaction"]
+                return await r.json()
 
-        return await retry(go, name="jup.swap", notif=self.notif)
+        return await retry(go, name="coop.status", notif=self.notif)
 
     async def create_limit(
         self, mint_in: str, mint_out: str, amount: int, limit_price: float

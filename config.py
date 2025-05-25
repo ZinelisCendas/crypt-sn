@@ -15,6 +15,7 @@ MAX_KELLY_F = float(os.getenv("MAX_KELLY_F", 0.25))
 ATR_LOOKBACK_MIN = int(os.getenv("ATR_LOOKBACK_MIN", 1440))
 PRUNE_INTERVAL_H = float(os.getenv("PRUNE_INTERVAL_H", 6))
 JUPITER_URL = "https://quote-api.jup.ag"
+COOP_URL = "https://gmgn.ai"
 PYTH_HIST_URL = "https://hermes.pyth.network/api/historical_price/"
 RPC_URL = os.getenv("RPC_URL", "https://api.mainnet-beta.solana.com")
 JITO_RPC = os.getenv("JITO_RPC", "")
