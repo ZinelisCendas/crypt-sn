@@ -3,8 +3,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import conftest  # noqa:F401
-import types
-import pytest
+
 
 import flipside_wallet_bot as fwb
 from flipside.errors import QueryRunExecutionError

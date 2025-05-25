@@ -110,11 +110,13 @@ class Notifier:
         if not self.tg_enabled:
             return
         try:
-            await aiohttp.ClientSession().post(
-                self.api,
-                json={"chat_id": self.chat, "text": msg},
-                timeout=aiohttp.ClientTimeout(total=10),
-            )
+            async with aiohttp.ClientSession() as s:
+                async with s.post(
+                    self.api,
+                    json={"chat_id": self.chat, "text": msg},
+                    timeout=aiohttp.ClientTimeout(total=10),
+                ):
+                    pass
         except Exception as exc:  # noqa: BLE001
             logging.getLogger(__name__).warning("Notifier error: %s", exc)
 
@@ -203,6 +205,9 @@ class CopyEngine:
         trades = metrics.trades if metrics else 30
         stake = await self._size(token, 1.5, nav, trades)  # assume sharpe proxy
         amt = int(stake / price)
+        if amt <= 0:
+            logging.getLogger(__name__).info("trade size <1, skipping")
+            return None
         quote = await self.exec.quote(SOL_MINT, token, amt)
         route = quote["data"][0]
         if isinstance(route, dict):
