@@ -137,7 +137,7 @@ All functions are **pure** except I/O boundaries; follow *functional‑core / im
 ## 8 Contribution Guide *(lightweight)*
 
 * Follow **Conventional Commits** (`feat:`, `fix:`).
-* PR must pass: `black`, `mypy`, `ruff`, `pytest -q` (runs smoke tests).
+* PR must pass: `black`, `mypy`, `ruff`, `pytest -q` (runs smoke tests). No CI runs automatically, so execute these locally before pushing.
 * Open an **issue** before big refactors.
 * Add / update **unit tests** for any public function; smoke tests live in `tests/smoke.py`.
 

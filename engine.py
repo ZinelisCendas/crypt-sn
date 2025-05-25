@@ -203,7 +203,7 @@ class CopyEngine:
         trades = metrics.trades if metrics else 30
         stake = await self._size(token, 1.5, nav, trades)  # assume sharpe proxy
         amt = int(stake / price)
-        quote = await self.exec.quote(token, token, amt)  # placeholder self swap
+        quote = await self.exec.quote(SOL_MINT, token, amt)
         route = quote["data"][0]
         if isinstance(route, dict):
             quote_price = float(route.get("outAmount", 0)) / max(amt, 1)
