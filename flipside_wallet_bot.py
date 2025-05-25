@@ -21,18 +21,17 @@ def _trending_wallets(limit: int = 10) -> list[str]:
     columns documented in Flipside's public tables.
     """
     client = Flipside(FLIPSIDE_API_KEY, FLIPSIDE_API_URL)
+    # signer → lowercase, Snowflake is case–insensitive if un-quoted.
+    # fact_transactions keeps realised PnL in `pnl`;             ↙︎
     sql = f"""
       SELECT
-        signer_address AS address
-    FROM
-      solana.core.fact_transactions
-    WHERE
-      block_timestamp >= CURRENT_TIMESTAMP - INTERVAL '30 days'
-    GROUP BY
-      1
-    ORDER BY
-      SUM(pnl) DESC
-    LIMIT {limit}
+        signer                         AS address,
+        SUM(pnl)                       AS realised_pnl
+      FROM  solana.core.fact_transactions
+      WHERE block_timestamp >= CURRENT_TIMESTAMP - INTERVAL '30 day'
+      GROUP BY 1
+      ORDER BY realised_pnl DESC
+      LIMIT {limit}
     """
     try:
         res = client.query(
@@ -43,14 +42,20 @@ def _trending_wallets(limit: int = 10) -> list[str]:
             page_size=limit,
             timeout_minutes=2,
         )
-    except (QueryRunExecutionError, ApiError, ServerError):  # pragma: no cover - logs only
+    except (
+        QueryRunExecutionError,
+        ApiError,
+        ServerError,
+    ):  # pragma: no cover - logs only
         logging.getLogger(__name__).warning("trending query failed", exc_info=True)
         return []
     return [r[0] for r in (res.records or [])]
 
 
 async def run_engine(ws_log: Optional[str] = None, dry_run: bool = False) -> None:
-    seed = _trending_wallets()
+    seed = _trending_wallets() or [
+        "11111111111111111111111111111111"
+    ]  # dummy burn addr
     eng = CopyEngine(seed, dry=dry_run, ws_log=ws_log)
     await eng.run()
 
