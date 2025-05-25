@@ -41,6 +41,8 @@ import math
 import time
 import statistics
 import logging
+import base64
+import base58
 from typing import Dict, List, Sequence
 from dataclasses import dataclass
 
@@ -49,6 +51,9 @@ import websockets
 import pandas as pd
 from dotenv import load_dotenv
 from prometheus_client import Gauge, start_http_server
+from solana.rpc.api import Client
+from solana.transaction import Transaction
+from solana.keypair import Keypair
 
 try:
     from gmgn import gmgn
@@ -68,6 +73,7 @@ ATR_LOOKBACK_MIN = int(os.getenv("ATR_LOOKBACK_MIN", 1440))
 PRUNE_INTERVAL_H = float(os.getenv("PRUNE_INTERVAL_H", 6))
 JUPITER_URL = "https://quote-api.jup.ag"
 PYTH_HIST_URL = "https://hermes.pyth.network/api/historical_price/"
+RPC_URL = os.getenv("RPC_URL", "https://api.mainnet-beta.solana.com")
 
 
 # ------------------------ models --------------------------
@@ -188,6 +194,20 @@ async def pyth_atr(mint: str, minutes: int = ATR_LOOKBACK_MIN) -> float:
     return statistics.mean(returns) * math.sqrt(1440)  # daily vol approx
 
 
+async def pyth_price(mint: str) -> float:
+    """Return the latest Pyth price for ``mint``."""
+    end = int(time.time())
+    start = end - 120
+    url = f"{PYTH_HIST_URL}{mint}?start_time={start}&end_time={end}&interval=1"
+    async with aiohttp.ClientSession() as s:
+        async with s.get(url) as r:
+            if r.status != 200:
+                return 0.0
+            data = await r.json()
+            prices = [p[1] for p in data.get("prices", [])]
+            return float(prices[-1]) if prices else 0.0
+
+
 # --------------------- analytics --------------------------
 class WalletAnalyzer:
     def __init__(self, tf="30d"):
@@ -261,6 +281,33 @@ class PositionBook:
         self.mark: Dict[str, float] = {}
         self.peak = init_nav
 
+    def update(self, token: str, qty: float, price: float, side: str = "buy"):
+        """Record executed trade and update mark price."""
+        self.mark[token] = price
+        pos = self.pos.get(token)
+        if side == "buy":
+            if pos:
+                new_qty = pos.qty + qty
+                pos.entry = (pos.entry * pos.qty + price * qty) / new_qty
+                pos.qty = new_qty
+                pos.value += qty * price
+            else:
+                self.pos[token] = Position(
+                    token,
+                    qty,
+                    price,
+                    qty * price,
+                    price * (1 - STOP_LOSS_PCT / 100),
+                    price * (1 + TAKE_PROFIT_PCT / 100),
+                    "copy",
+                )
+        else:
+            if pos:
+                pos.qty -= qty
+                pos.value -= qty * price
+                if pos.qty <= 0:
+                    del self.pos[token]
+
     def nav(self):
         free = self.init - sum(p.value for p in self.pos.values())
         pos = sum(self.mark.get(t, p.entry) * p.qty for t, p in self.pos.items())
@@ -302,6 +349,8 @@ class CopyEngine:
         self.notif = Notifier()
         self.pb = PositionBook(100)
         self.safe = SafetyChecker(self.sol)
+        self.closed: Dict[str, float] = {}
+        self.start_nav = self.pb.init
 
     # Kelly + ATR sizing
     async def _size(self, token: str, sharpe: float, nav: float):
@@ -319,9 +368,32 @@ class CopyEngine:
         stake = await self._size(token, 1.5, nav)  # assume sharpe proxy 1.5 for now
         amt = int(stake / price)
         quote = await self.exec.quote(token, token, amt)  # self‑swap for placeholder
-        _ = await self.exec.swap_tx(quote["data"][0])
-        # send tx via RPC (omitted) with priority fee
+        tx_b64 = await self.exec.swap_tx(quote["data"][0])
+
+        tx_bytes = base64.b64decode(tx_b64)
+        tx_bytes = add_priority_fee(tx_bytes)
+        kp = Keypair.from_secret_key(base58.b58decode(PRIV_KEY))
+        tx = Transaction.deserialize(tx_bytes)
+        tx.sign(kp)
+        client = Client(RPC_URL)
+        try:
+            sig = client.send_raw_transaction(tx.serialize()).get("result")
+            logging.getLogger(__name__).info("tx %s sent", sig)
+        except Exception as exc:
+            logging.getLogger(__name__).warning("tx failure: %s", exc)
+
         await self.notif.send(f"BUY {amt} {token[:4]}… @ {price:.6f} SOL")
+        self.pb.update(token, amt, price, "buy")
+        nav = self.pb.nav()
+        NAV_G.set(nav)
+        PNL_G.set((nav - self.pb.init) / self.pb.init * 100)
+        self.pb.update_peak(nav)
+        dd = self.pb.global_dd(nav)
+        if dd >= GLOBAL_DD_PCT:
+            await self.notif.send(
+                f"GLOBAL DD {dd:.1f}% exceeds {GLOBAL_DD_PCT}% – shutting down"
+            )
+            raise SystemExit("drawdown limit hit")
 
     async def _wallet_stream(self):
         backoff = 1
@@ -344,9 +416,40 @@ class CopyEngine:
                 await asyncio.sleep(backoff)
                 backoff = min(backoff * 2, 60)
 
+    async def _mark_positions(self):
+        """Update marks, close on SL/TP and prune old closed entries."""
+        while True:
+            now = time.time()
+            for token, pos in list(self.pb.pos.items()):
+                price = await pyth_price(token)
+                if not price:
+                    continue
+                self.pb.mark[token] = price
+                if price <= pos.sl or price >= pos.tp:
+                    pnl = price * pos.qty - pos.value
+                    self.pb.init += pnl
+                    self.pb.pos.pop(token, None)
+                    self.pb.mark.pop(token, None)
+                    self.closed[token] = now
+                    await self.notif.send(
+                        f"SELL {int(pos.qty)} {token[:4]}… @ {price:.6f} PnL {pnl:+.4f}"
+                    )
+
+            nav = self.pb.nav()
+            self.pb.update_peak(nav)
+            NAV_G.set(nav)
+            if self.start_nav:
+                PNL_G.set(100 * (nav - self.start_nav) / self.start_nav)
+
+            for token, ts in list(self.closed.items()):
+                if now - ts >= PRUNE_INTERVAL_H * 3600:
+                    self.closed.pop(token, None)
+
+            await asyncio.sleep(60)
+
     async def run(self):
         start_http_server(9100)
-        await self._wallet_stream()
+        await asyncio.gather(self._wallet_stream(), self._mark_positions())
 
 
 # --------------------- main -------------------------------
