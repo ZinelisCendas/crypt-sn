@@ -1,20 +1,21 @@
 from __future__ import annotations
 
 import asyncio
+from typing import Optional
 
 from engine import CopyEngine
 from gmgn import gmgn
 
 
-async def cli() -> None:
+async def run_engine(ws_log: Optional[str] = None, dry_run: bool = False) -> None:
     seed = [w["address"] for w in gmgn().getTrendingWallets()["data"]][:10]
-    eng = CopyEngine(seed)
+    eng = CopyEngine(seed, dry=dry_run, ws_log=ws_log)
     await eng.run()
 
 
-def main() -> None:
+def main(ws_log: Optional[str] = None, dry_run: bool = False) -> None:
     try:
-        asyncio.run(cli())
+        asyncio.run(run_engine(ws_log, dry_run))
     except KeyboardInterrupt:
         pass
 

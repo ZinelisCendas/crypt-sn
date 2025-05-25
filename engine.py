@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any, Dict, Sequence, cast
 from collections import deque
 import math
+import random
 
 import aiohttp
 import base58
@@ -28,6 +29,8 @@ from config import (
     STOP_LOSS_PCT,
     TAKE_PROFIT_PCT,
     SOL_MINT,
+    DRY_RUN,
+    SIM_SLIPPAGE_BPS,
 )
 from exec import JupiterExec, add_priority_fee
 from mev import send_bundle
@@ -123,7 +126,14 @@ INCLUSION_G = Histogram("inclusion_ms", "ms from send to confirm")
 
 
 class CopyEngine:
-    def __init__(self, seed_addrs: Sequence[str]):
+    def __init__(
+        self,
+        seed_addrs: Sequence[str],
+        *,
+        dry: bool = DRY_RUN,
+        ws_log: str | None = None,
+        journal_path: str = "journal.csv",
+    ):
         self.addrs = set(seed_addrs)
         self.notif = Notifier()
         self.gmgn = GmgnAPI(self.notif)
@@ -135,6 +145,27 @@ class CopyEngine:
         self.metrics: Dict[str, WalletMetrics] = {}
         self.start_nav = self.pb.init
         self.nav_hist: deque[float] = deque([self.pb.init], maxlen=1440)
+        self.dry = dry
+        self.ws_log = ws_log
+        self.journal_path = journal_path
+
+    def _log_trade(
+        self,
+        ts: float,
+        address: str,
+        token: str,
+        side: str,
+        qty: float,
+        price: float,
+        nav_after: float,
+    ) -> None:
+        """Append a trade line to the journal CSV."""
+        line = f"{ts:.3f},{address},{token},{side},{qty},{price:.6f},{nav_after:.4f}\n"
+        try:
+            with open(self.journal_path, "a", encoding="utf-8") as f:
+                f.write(line)
+        except Exception as exc:  # noqa: BLE001
+            logging.getLogger(__name__).warning("journal write failed: %s", exc)
 
     def _nav_vol(self) -> float:
         if len(self.nav_hist) < 2:
@@ -188,30 +219,39 @@ class CopyEngine:
             tx_b64 = cast(str, tx_resp)
             exec_px = None
 
-        tx_bytes = base64.b64decode(tx_b64)
-        tx_bytes = await add_priority_fee(tx_bytes)
-        kp = Keypair.from_secret_key(base58.b58decode(PRIV_KEY))
-        tx = Transaction.deserialize(tx_bytes)
-        tx.sign(kp)
-        client = Client(RPC_URL)
-        try:
-            start_t = time.time()
-            if JITO_RPC:
-                ok = await send_bundle(base64.b64encode(tx.serialize()).decode())
-                if ok:
-                    sig = "bundle"
+        if not self.dry:
+            tx_bytes = base64.b64decode(tx_b64)
+            tx_bytes = await add_priority_fee(tx_bytes)
+            kp = Keypair.from_secret_key(base58.b58decode(PRIV_KEY))
+            tx = Transaction.deserialize(tx_bytes)
+            tx.sign(kp)
+            client = Client(RPC_URL)
+            try:
+                start_t = time.time()
+                if JITO_RPC:
+                    ok = await send_bundle(base64.b64encode(tx.serialize()).decode())
+                    if ok:
+                        sig = "bundle"
+                    else:
+                        resp = cast(
+                            dict[str, Any], client.send_raw_transaction(tx.serialize())
+                        )
+                        sig = resp.get("result", "raw")
                 else:
                     resp = cast(
                         dict[str, Any], client.send_raw_transaction(tx.serialize())
                     )
-                    sig = resp.get("result", "raw")
-            else:
-                resp = cast(dict[str, Any], client.send_raw_transaction(tx.serialize()))
-                sig = resp["result"]
-            INCLUSION_G.observe((time.time() - start_t) * 1000)
-            logging.getLogger(__name__).info("tx %s sent", sig)
-        except Exception as exc:  # noqa: BLE001
-            logging.getLogger(__name__).warning("tx failure: %s", exc)
+                    sig = resp["result"]
+                INCLUSION_G.observe((time.time() - start_t) * 1000)
+                logging.getLogger(__name__).info("tx %s sent", sig)
+            except Exception as exc:  # noqa: BLE001
+                logging.getLogger(__name__).warning("tx failure: %s", exc)
+                sig = "err"
+        else:
+            exec_px = quote_price * (
+                1 + (SIM_SLIPPAGE_BPS / 10_000) * (1 if random.random() < 0.5 else -1)
+            )
+            sig = f"SIM-{int(time.time()*1000)}"
 
         if exec_px is not None and quote_price:
             slippage = abs(exec_px / quote_price - 1) * 10_000
@@ -230,6 +270,7 @@ class CopyEngine:
         PNL_G.set((nav - self.pb.init) / self.pb.init * 100)
         self.pb.update_peak(nav)
         self.nav_hist.append(nav)
+        self._log_trade(time.time(), wallet or "", token, "buy", amt, price, nav)
         dd = self.pb.global_dd(nav)
         if dd >= GLOBAL_DD_PCT:
             await self.notif.send(
@@ -238,31 +279,49 @@ class CopyEngine:
             Path("flag_down").write_text(f"{nav:.4f}")
             await asyncio.sleep(86400)
             raise SystemExit("drawdown limit hit")
+        return sig
 
     async def _wallet_stream(self):
-        backoff = 1
-        while True:
-            try:
-                async with websockets.connect("wss://ws.gmgn.ai/v1") as ws:
-                    backoff = 1
-                    async for msg in ws:
-                        ev = json.loads(msg)
-                        if ev.get("address") in self.addrs and ev.get("side") == "buy":
-                            token = ev.get("token")
-                            if not token:
-                                continue
-                            if await self.safe.is_safe(token):
-                                await self._execute_buy(ev)
-            except Exception as exc:  # noqa: BLE001
-                logging.getLogger(__name__).warning(
-                    "WS reconnect in %s sec due to %s", backoff, exc
-                )
+        if self.ws_log:
+            prev = None
+            with open(self.ws_log, "r", encoding="utf-8") as f:
+                for line in f:
+                    ev = json.loads(line)
+                    ts = ev.get("timestamp", ev.get("ts", 0)) / 1000
+                    if prev is not None:
+                        await asyncio.sleep(max(0, ts - prev))
+                    prev = ts
+                    if ev.get("address") in self.addrs and ev.get("side") == "buy":
+                        token = ev.get("token")
+                        if token and await self.safe.is_safe(token):
+                            await self._execute_buy(ev)
+        else:
+            backoff = 1
+            while True:
                 try:
-                    await self.notif.send(f"WS disconnect: {exc}")
-                except Exception:  # noqa: BLE001
-                    pass
-                await asyncio.sleep(backoff)
-                backoff = min(backoff * 2, 60)
+                    async with websockets.connect("wss://ws.gmgn.ai/v1") as ws:
+                        backoff = 1
+                        async for msg in ws:
+                            ev = json.loads(msg)
+                            if (
+                                ev.get("address") in self.addrs
+                                and ev.get("side") == "buy"
+                            ):
+                                token = ev.get("token")
+                                if not token:
+                                    continue
+                                if await self.safe.is_safe(token):
+                                    await self._execute_buy(ev)
+                except Exception as exc:  # noqa: BLE001
+                    logging.getLogger(__name__).warning(
+                        "WS reconnect in %s sec due to %s", backoff, exc
+                    )
+                    try:
+                        await self.notif.send(f"WS disconnect: {exc}")
+                    except Exception:  # noqa: BLE001
+                        pass
+                    await asyncio.sleep(backoff)
+                    backoff = min(backoff * 2, 60)
 
     async def _mark_positions(self):
         while True:
@@ -280,6 +339,9 @@ class CopyEngine:
                     self.closed[token] = now
                     await self.notif.send(
                         f"SELL {int(pos.qty)} {token[:4]}… @ {price:.6f} PnL {pnl:+.4f}"
+                    )
+                    self._log_trade(
+                        now, "", token, "sell", pos.qty, price, self.pb.nav()
                     )
 
             nav = self.pb.nav()

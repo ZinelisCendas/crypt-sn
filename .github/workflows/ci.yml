@@ -1,0 +1,21 @@
+name: ci
+on: [push, pull_request]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+      - run: pip install -r requirements.txt
+      - run: |
+          DRY_RUN=true python main.py run --ws-log tests/fixtures/sample.jsonl &
+          pid=$!
+          sleep 30
+          kill $pid || true
+      - run: test -f journal.csv
+      - run: black --check .
+      - run: ruff .
+      - run: mypy .
+      - run: pytest -q
