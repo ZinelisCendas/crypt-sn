@@ -10,8 +10,7 @@ The engine now uses the **Flipside Cooperation‑API** to fetch swap routes and 
 pip install -r requirements.txt
 ```
 
-The included `flipside-wrapper` package exposes the `flipside` module used by
-`flipside_wallet_bot`.
+This project now relies on the official `flipside` SDK.
 
 ## Environment Setup
 

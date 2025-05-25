@@ -3,7 +3,7 @@ base58
 aiohttp
 websockets
 pandas
-flipside-wrapper
+flipside
 python-dotenv
 prometheus-client
 solana
