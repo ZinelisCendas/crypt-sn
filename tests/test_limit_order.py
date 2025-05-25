@@ -5,6 +5,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import conftest  # noqa:F401
 import types
 import base64
+from solders.signature import Signature
 import pytest
 
 from engine import CopyEngine
@@ -45,14 +46,18 @@ async def test_limit_order(monkeypatch):
     monkeypatch.setattr("engine.base58.b58decode", lambda b: b"")
 
     class Tx:
-        def sign(self, *a):
-            pass
+        message = b""
+        signatures: list = []
 
-        def serialize(self):
+        def __bytes__(self):
             return b"tx_signed"
 
-    monkeypatch.setattr("engine.Transaction.deserialize", lambda b: Tx())
-    monkeypatch.setattr("engine.Keypair.from_bytes", lambda b: object())
+    monkeypatch.setattr("engine.Transaction.from_bytes", lambda b: Tx())
+    monkeypatch.setattr("engine.Transaction.populate", lambda msg, sigs: Tx())
+    monkeypatch.setattr(
+        "engine.Keypair.from_bytes",
+        lambda b: types.SimpleNamespace(sign_message=lambda m: Signature.default()),
+    )
 
     class FakeClient:
         def __init__(self, *a, **k):

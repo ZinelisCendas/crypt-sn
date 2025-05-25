@@ -6,6 +6,7 @@ import conftest  # noqa:F401
 import pytest
 import base64
 import types
+from solders.signature import Signature
 from engine import CopyEngine
 from wallet import WalletMetrics
 
@@ -63,14 +64,18 @@ async def test_execute_buy_uses_trades(monkeypatch):
     monkeypatch.setattr("engine.base58.b58decode", lambda b: b"")
 
     class Tx:
-        def sign(self, *a):
-            pass
+        message = b""
+        signatures: list = []
 
-        def serialize(self):
+        def __bytes__(self):
             return b"tx"
 
-    monkeypatch.setattr("engine.Transaction.deserialize", lambda b: Tx())
-    monkeypatch.setattr("engine.Keypair.from_bytes", lambda b: object())
+    monkeypatch.setattr("engine.Transaction.from_bytes", lambda b: Tx())
+    monkeypatch.setattr("engine.Transaction.populate", lambda msg, sigs: Tx())
+    monkeypatch.setattr(
+        "engine.Keypair.from_bytes",
+        lambda b: types.SimpleNamespace(sign_message=lambda m: Signature.default()),
+    )
     monkeypatch.setattr(
         "engine.Client",
         lambda *a, **k: types.SimpleNamespace(

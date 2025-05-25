@@ -18,7 +18,7 @@ import websockets
 from prometheus_client import Gauge, Histogram, start_http_server
 from solders.keypair import Keypair
 from solana.rpc.api import Client
-from solana.transaction import Transaction
+from solders.transaction import VersionedTransaction as Transaction
 
 from config import (
     GLOBAL_DD_PCT,
@@ -223,24 +223,23 @@ class CopyEngine:
             tx_bytes = base64.b64decode(tx_b64)
             tx_bytes = await add_priority_fee(tx_bytes)
             kp = Keypair.from_bytes(base58.b58decode(PRIV_KEY))
-            tx = Transaction.deserialize(tx_bytes)
-            tx.sign(kp)
+            tx = Transaction.from_bytes(tx_bytes)
+            signature = kp.sign_message(bytes(tx.message))
+            tx = Transaction.populate(tx.message, [signature, *tx.signatures[1:]])
             client = Client(RPC_URL)
             try:
                 start_t = time.time()
                 if JITO_RPC:
-                    ok = await send_bundle(base64.b64encode(tx.serialize()).decode())
+                    ok = await send_bundle(base64.b64encode(bytes(tx)).decode())
                     if ok:
                         sig = "bundle"
                     else:
                         resp = cast(
-                            dict[str, Any], client.send_raw_transaction(tx.serialize())
+                            dict[str, Any], client.send_raw_transaction(bytes(tx))
                         )
                         sig = resp.get("result", "raw")
                 else:
-                    resp = cast(
-                        dict[str, Any], client.send_raw_transaction(tx.serialize())
-                    )
+                    resp = cast(dict[str, Any], client.send_raw_transaction(bytes(tx)))
                     sig = resp["result"]
                 INCLUSION_G.observe((time.time() - start_t) * 1000)
                 logging.getLogger(__name__).info("tx %s sent", sig)
