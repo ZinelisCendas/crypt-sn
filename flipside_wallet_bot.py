@@ -21,11 +21,11 @@ def _trending_wallets(limit: int = 10) -> list[str]:
     columns documented in Flipside's public tables.
     """
     client = Flipside(FLIPSIDE_API_KEY, FLIPSIDE_API_URL)
-    # signer → lowercase, Snowflake is case–insensitive if un-quoted.
+    # signer_address → lowercase, Snowflake is case–insensitive if un-quoted.
     # fact_transactions keeps realised PnL in `pnl`;             ↙︎
     sql = f"""
       SELECT
-        signer                         AS address,
+        signer_address                 AS address,
         SUM(pnl)                       AS realised_pnl
       FROM  solana.core.fact_transactions
       WHERE block_timestamp >= CURRENT_TIMESTAMP - INTERVAL '30 day'
