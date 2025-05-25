@@ -164,7 +164,9 @@ class CopyEngine:
         """Append a trade line to the journal CSV."""
         line = f"{ts:.3f},{address},{token},{side},{qty},{price:.6f},{nav_after:.4f}\n"
         try:
-            with open(self.journal_path, "a", encoding="utf-8") as f:
+            p = Path(self.journal_path)
+            p.parent.mkdir(parents=True, exist_ok=True)
+            with p.open("a", encoding="utf-8") as f:
                 f.write(line)
         except Exception as exc:  # noqa: BLE001
             logging.getLogger(__name__).warning("journal write failed: %s", exc)
@@ -306,7 +308,10 @@ class CopyEngine:
                     async with websockets.connect("wss://ws.flipside.ai/v1") as ws:
                         backoff = 1
                         async for msg in ws:
-                            ev = json.loads(msg)
+                            try:
+                                ev = json.loads(msg)
+                            except json.JSONDecodeError:
+                                continue
                             if (
                                 ev.get("address") in self.addrs
                                 and ev.get("side") == "buy"
@@ -363,4 +368,14 @@ class CopyEngine:
 
     async def run(self):
         start_http_server(9100)
-        await asyncio.gather(self._wallet_stream(), self._mark_positions())
+        tasks = [
+            asyncio.create_task(self._wallet_stream()),
+            asyncio.create_task(self._mark_positions()),
+        ]
+        try:
+            await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+        finally:
+            for t in tasks:
+                t.cancel()
+            await self.exec.close()
+            await self.sol.close()

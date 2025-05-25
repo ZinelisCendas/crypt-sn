@@ -35,6 +35,9 @@ class SolscanAPI:
 
         return await retry(go, name="solscan.meta", notif=self.notif)
 
+    async def close(self) -> None:
+        await self.http.close()
+
 
 class SafetyChecker:
     def __init__(self, sol: SolscanAPI, notif: Any | None = None):
