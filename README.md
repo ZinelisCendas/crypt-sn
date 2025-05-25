@@ -2,6 +2,9 @@
 
 Open-source Solana copy trading bot with safety checks and adaptive sizing.
 
+The engine now uses the **GMGN Cooperation‑API** to fetch swap routes and submit
+transactions via HTTP rather than the WebSocket interface.
+
 ## Installation
 
 ```bash
