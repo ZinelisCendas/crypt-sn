@@ -1,6 +1,6 @@
 # gmgn_wallet_bot
 
-Open-source Solana copy trading bot.
+Open-source Solana copy trading bot with safety checks and adaptive sizing.
 
 ## Installation
 
@@ -20,6 +20,17 @@ cp .env.template .env
 ```bash
 python main.py
 pytest tests/smoke.py
+```
+
+### Running the checks
+
+This project uses `ruff`, `black`, `mypy` and `pytest` for linting and tests. Run them locally before opening a pull request:
+
+```bash
+ruff check .
+black --check .
+mypy .
+pytest -q
 ```
 
 
