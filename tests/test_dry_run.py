@@ -43,7 +43,7 @@ async def test_dry_run(monkeypatch, tmp_path):
             sign=lambda *a, **k: None, serialize=lambda: b"tx"
         ),
     )
-    monkeypatch.setattr("engine.Keypair.from_secret_key", lambda b: object())
+    monkeypatch.setattr("engine.Keypair.from_bytes", lambda b: object())
     monkeypatch.setattr(
         "engine.Client",
         lambda *a, **k: types.SimpleNamespace(

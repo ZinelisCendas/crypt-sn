@@ -45,7 +45,7 @@ async def test_slippage_hist(monkeypatch):
             return b"tx"
 
     monkeypatch.setattr("engine.Transaction.deserialize", lambda b: Tx())
-    monkeypatch.setattr("engine.Keypair.from_secret_key", lambda b: object())
+    monkeypatch.setattr("engine.Keypair.from_bytes", lambda b: object())
     monkeypatch.setattr(
         "engine.Client",
         lambda *a, **k: types.SimpleNamespace(

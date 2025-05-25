@@ -52,7 +52,7 @@ async def test_limit_order(monkeypatch):
             return b"tx_signed"
 
     monkeypatch.setattr("engine.Transaction.deserialize", lambda b: Tx())
-    monkeypatch.setattr("engine.Keypair.from_secret_key", lambda b: object())
+    monkeypatch.setattr("engine.Keypair.from_bytes", lambda b: object())
 
     class FakeClient:
         def __init__(self, *a, **k):
