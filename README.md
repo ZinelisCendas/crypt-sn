@@ -1,9 +1,8 @@
-# gmgn_wallet_bot
+# flipside_wallet_bot
 
 Open-source Solana copy trading bot with safety checks and adaptive sizing.
 
-The engine now uses the **GMGN Cooperation‑API** to fetch swap routes and submit
-transactions via HTTP rather than the WebSocket interface.
+The engine now uses the **Flipside Cooperation‑API** to fetch swap routes and submit transactions via HTTP rather than the WebSocket interface.
 
 ## Installation
 
@@ -11,8 +10,8 @@ transactions via HTTP rather than the WebSocket interface.
 pip install -r requirements.txt
 ```
 
-The included `gmgn-wrapper` package exposes the `gmgn` module used by
-`gmgn_wallet_bot`.
+The included `flipside-wrapper` package exposes the `flipside` module used by
+`flipside_wallet_bot`.
 
 ## Environment Setup
 
