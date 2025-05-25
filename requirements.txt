@@ -6,6 +6,10 @@ gmgn-wrapper
 python-dotenv
 prometheus-client
 solana
+numpy
+scikit-learn
+python-json-logger
+networkx
 
 # Dev dependencies
 pytest

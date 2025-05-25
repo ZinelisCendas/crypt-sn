@@ -111,6 +111,7 @@ class Gauge:
 
 
 prom_mod.Gauge = Gauge
+prom_mod.Histogram = Gauge
 prom_mod.start_http_server = lambda *a, **k: None
 sys.modules.setdefault("prometheus_client", prom_mod)
 
@@ -160,3 +161,46 @@ sys.modules.setdefault("solana.keypair", sol_kp)
 
 sys.modules.setdefault("solana", types.ModuleType("solana"))
 sys.modules.setdefault("solana.rpc", types.ModuleType("solana.rpc"))
+
+# Stub numpy
+np_mod = types.ModuleType("numpy")
+np_mod.arange = lambda n: list(range(n))
+np_mod.array = lambda x: x
+np_mod.reshape = lambda arr, shape: [[i] for i in arr]
+np_mod.isscalar = lambda x: isinstance(x, (int, float))
+sys.modules.setdefault("numpy", np_mod)
+
+# Stub sklearn
+sk_mod = types.ModuleType("sklearn")
+lin_mod = types.ModuleType("linear_model")
+
+
+class LR:
+    def fit(self, X, y):
+        return self
+
+    @property
+    def coef_(self):
+        return [1.0]
+
+    def score(self, X, y):
+        return 1.0
+
+
+LinearRegression = LR
+lin_mod.LinearRegression = LinearRegression
+sk_mod.linear_model = lin_mod
+sys.modules.setdefault("sklearn", sk_mod)
+sys.modules.setdefault("sklearn.linear_model", lin_mod)
+
+# Stub pythonjsonlogger
+pj_mod = types.ModuleType("pythonjsonlogger")
+
+
+class JF:
+    def __init__(self, *a, **k):
+        pass
+
+
+pj_mod.jsonlogger = types.SimpleNamespace(JsonFormatter=JF)
+sys.modules.setdefault("pythonjsonlogger", pj_mod)

@@ -19,6 +19,8 @@ async def test_is_safe(monkeypatch):
 
     monkeypatch.setattr(sc, "_solscan_ok", ok)
     monkeypatch.setattr(sc, "rugcheck_pass", ok)
+    monkeypatch.setattr(sc, "pumpfun_age_ok", ok)
+    monkeypatch.setattr(sc, "dev_dump_ok", ok)
     assert await sc.is_safe("M")
 
     monkeypatch.setattr(sc, "rugcheck_pass", bad)

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 
 import aiohttp
 from typing import Any
@@ -75,6 +76,37 @@ class SafetyChecker:
             vote = await retry(vote_call, name="rugcheck.vote", notif=self.notif)
             return vote.get("vote") != "rug"
 
+    async def pumpfun_age_ok(self, mint: str) -> bool:
+        info = await self.sol.meta(mint)
+        launch_ts = info.get("data", {}).get("createdTime", 0)
+        return time.time() - launch_ts > 7200
+
+    async def dev_dump_ok(self, mint: str) -> bool:
+        meta = await self.sol.meta(mint)
+        auth = meta.get("data", {}).get("updateAuthority")
+        if not auth:
+            return True
+
+        async def go():
+            async with aiohttp.ClientSession() as s:
+                async with s.get(
+                    f"{self.sol.BASE}/account/transactions?account={auth}&limit=50"
+                ) as r:
+                    if r.status != 200:
+                        return []
+                    return await r.json()
+
+        txs = await retry(go, name="solscan.devtx", notif=self.notif) or []
+        sells = sum(1 for t in txs if t.get("type") == "Sell")
+        buys = sum(1 for t in txs if t.get("type") == "Buy")
+        return bool(buys) and sells / buys <= 2
+
     async def is_safe(self, mint: str) -> bool:
         solscan_ok = await self._solscan_ok(mint)
-        return solscan_ok and await self.rugcheck_pass(mint)
+        if not solscan_ok:
+            return False
+        if not await self.rugcheck_pass(mint):
+            return False
+        if not await self.pumpfun_age_ok(mint):
+            return False
+        return await self.dev_dump_ok(mint)

@@ -6,12 +6,13 @@ import json
 import logging
 import time
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Dict, Sequence, cast
 
 import aiohttp
 import base58
 import websockets
-from prometheus_client import Gauge, start_http_server
+from prometheus_client import Gauge, Histogram, start_http_server
 from solana.keypair import Keypair
 from solana.rpc.api import Client
 from solana.transaction import Transaction
@@ -111,6 +112,8 @@ class Notifier:
 
 NAV_G = Gauge("bot_nav_sol", "Current NAV in SOL")
 PNL_G = Gauge("bot_pnl_pct", "PnL % from start")
+SLIPPAGE_G = Histogram("slippage_bps", "Slippage per trade")
+INCLUSION_G = Histogram("inclusion_ms", "ms from send to confirm")
 
 
 class CopyEngine:
@@ -127,31 +130,40 @@ class CopyEngine:
 
     async def _size(self, token: str, sharpe: float, nav: float) -> float:
         vol = await pyth_atr(token, notif=self.notif) or 0.05
-        stake = kelly_size(nav, sharpe, vol)
+        stake = kelly_size(nav, sharpe, vol, 30)
+        nav_vol_target = 0.10
+        portfolio_est_vol = vol or 0.05
+        stake = stake * (nav_vol_target / portfolio_est_vol)
         return stake
 
     async def _execute_buy(self, ev: dict):
         token = ev["token"]
         price = float(ev["price"])
         nav = self.pb.nav()
+        pos = self.pb.pos.get(token)
+        if pos and self.pb.mark.get(token, pos.entry) * pos.qty >= 0.3 * nav:
+            return
         stake = await self._size(token, 1.5, nav)  # assume sharpe proxy
         amt = int(stake / price)
         quote = await self.exec.quote(token, token, amt)  # placeholder self swap
         tx_b64 = await self.exec.swap_tx(quote["data"][0])
 
         tx_bytes = base64.b64decode(tx_b64)
-        tx_bytes = add_priority_fee(tx_bytes)
+        tx_bytes = await add_priority_fee(tx_bytes)
         kp = Keypair.from_secret_key(base58.b58decode(PRIV_KEY))
         tx = Transaction.deserialize(tx_bytes)
         tx.sign(kp)
         client = Client(RPC_URL)
         try:
+            start_t = time.time()
             resp = cast(dict[str, Any], client.send_raw_transaction(tx.serialize()))
             sig = resp["result"]
+            INCLUSION_G.observe((time.time() - start_t) * 1000)
             logging.getLogger(__name__).info("tx %s sent", sig)
         except Exception as exc:  # noqa: BLE001
             logging.getLogger(__name__).warning("tx failure: %s", exc)
 
+        SLIPPAGE_G.observe(0.0)
         await self.notif.send(f"BUY {amt} {token[:4]}… @ {price:.6f} SOL")
         self.pb.update(token, amt, price, "buy")
         nav = self.pb.nav()
@@ -163,6 +175,8 @@ class CopyEngine:
             await self.notif.send(
                 f"GLOBAL DD {dd:.1f}% exceeds {GLOBAL_DD_PCT}% – shutting down"
             )
+            Path("flag_down").write_text(f"{nav:.4f}")
+            await asyncio.sleep(86400)
             raise SystemExit("drawdown limit hit")
 
     async def _wallet_stream(self):
