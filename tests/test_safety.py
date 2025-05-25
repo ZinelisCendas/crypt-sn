@@ -9,7 +9,7 @@ from main import SafetyChecker
 
 @pytest.mark.asyncio
 async def test_is_safe(monkeypatch):
-    sc = SafetyChecker(None)
+    sc = SafetyChecker(None, None)
 
     async def ok(_):
         return True
