@@ -8,6 +8,8 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, Sequence, cast
+from collections import deque
+import math
 
 import aiohttp
 import base58
@@ -132,15 +134,30 @@ class CopyEngine:
         self.closed: Dict[str, float] = {}
         self.metrics: Dict[str, WalletMetrics] = {}
         self.start_nav = self.pb.init
+        self.nav_hist: deque[float] = deque([self.pb.init], maxlen=1440)
+
+    def _nav_vol(self) -> float:
+        if len(self.nav_hist) < 2:
+            return 0.0
+        returns = [
+            (self.nav_hist[i] / self.nav_hist[i - 1]) - 1
+            for i in range(1, len(self.nav_hist))
+        ]
+        alpha = 2 / 1441
+        ewma = 0.0
+        for r in reversed(returns):
+            ewma = alpha * r * r + (1 - alpha) * ewma
+        sigma = math.sqrt(ewma) * math.sqrt(525_600)
+        return sigma
 
     async def _size(
         self, token: str, sharpe: float, nav: float, trades: int = 30
     ) -> float:
         vol = await pyth_atr(token, notif=self.notif) or 0.05
         stake = kelly_size(nav, sharpe, vol, trades)
-        nav_vol_target = 0.10
-        portfolio_est_vol = vol or 0.05
-        stake = stake * (nav_vol_target / portfolio_est_vol)
+        sigma = self._nav_vol()
+        if sigma > 0:
+            stake *= 0.10 / sigma
         return stake
 
     async def _execute_buy(self, ev: dict):
@@ -156,7 +173,20 @@ class CopyEngine:
         stake = await self._size(token, 1.5, nav, trades)  # assume sharpe proxy
         amt = int(stake / price)
         quote = await self.exec.quote(token, token, amt)  # placeholder self swap
-        tx_b64 = await self.exec.swap_tx(quote["data"][0])
+        route = quote["data"][0]
+        if isinstance(route, dict):
+            quote_price = float(route.get("outAmount", 0)) / max(amt, 1)
+        else:
+            quote_price = price
+        tx_resp = await self.exec.swap_tx(route)
+        if isinstance(tx_resp, dict):
+            tx_b64 = cast(
+                str, tx_resp.get("tx") or tx_resp.get("swapTransaction") or ""
+            )
+            exec_px = cast(float | None, tx_resp.get("exec_px"))
+        else:
+            tx_b64 = cast(str, tx_resp)
+            exec_px = None
 
         tx_bytes = base64.b64decode(tx_b64)
         tx_bytes = await add_priority_fee(tx_bytes)
@@ -183,7 +213,11 @@ class CopyEngine:
         except Exception as exc:  # noqa: BLE001
             logging.getLogger(__name__).warning("tx failure: %s", exc)
 
-        SLIPPAGE_G.observe(0.0)
+        if exec_px is not None and quote_price:
+            slippage = abs(exec_px / quote_price - 1) * 10_000
+        else:
+            slippage = 0.0
+        SLIPPAGE_G.observe(slippage)
         await self.notif.send(f"BUY {amt} {token[:4]}… @ {price:.6f} SOL")
         self.pb.update(token, amt, price, "buy")
         pos = self.pb.pos.get(token)
@@ -195,6 +229,7 @@ class CopyEngine:
         NAV_G.set(nav)
         PNL_G.set((nav - self.pb.init) / self.pb.init * 100)
         self.pb.update_peak(nav)
+        self.nav_hist.append(nav)
         dd = self.pb.global_dd(nav)
         if dd >= GLOBAL_DD_PCT:
             await self.notif.send(
@@ -252,6 +287,7 @@ class CopyEngine:
             NAV_G.set(nav)
             if self.start_nav:
                 PNL_G.set(100 * (nav - self.start_nav) / self.start_nav)
+            self.nav_hist.append(nav)
 
             for token, ts in list(self.closed.items()):
                 if now - ts >= PRUNE_INTERVAL_H * 3600:
