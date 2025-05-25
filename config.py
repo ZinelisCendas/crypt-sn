@@ -18,3 +18,4 @@ JUPITER_URL = "https://quote-api.jup.ag"
 PYTH_HIST_URL = "https://hermes.pyth.network/api/historical_price/"
 RPC_URL = os.getenv("RPC_URL", "https://api.mainnet-beta.solana.com")
 JITO_RPC = os.getenv("JITO_RPC", "")
+SOL_MINT = "So11111111111111111111111111111111111111112"
