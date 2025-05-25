@@ -1,0 +1,14 @@
+# Core dependencies
+aiohttp
+websockets
+pandas
+gmgnai-wrapper
+python-dotenv
+prometheus-client
+solana
+
+# Dev dependencies
+pytest
+ruff
+mypy
+black
