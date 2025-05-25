@@ -29,6 +29,17 @@ flipside_mod.Flipside = lambda *a, **k: DummyClient()
 flipside_mod.flipside = lambda: Dummy()
 sys.modules.setdefault("flipside", flipside_mod)
 
+# Stub flipside.errors for QueryRunExecutionError
+flipside_err_mod = types.ModuleType("flipside.errors")
+
+
+class QueryRunExecutionError(Exception):
+    pass
+
+
+flipside_err_mod.QueryRunExecutionError = QueryRunExecutionError
+sys.modules.setdefault("flipside.errors", flipside_err_mod)
+
 # Stub aiohttp
 aiohttp_mod = types.ModuleType("aiohttp")
 
