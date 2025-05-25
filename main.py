@@ -106,38 +106,76 @@ class Position:
 
 # ---------------- gmgn + solscan + pyth -------------------
 class GmgnAPI:  # minimal wrapper
-    def __init__(self):
+    def __init__(self, notifier: "Notifier | None" = None):
         self.g = gmgn()
         self.http = aiohttp.ClientSession()
+        self.notif = notifier
 
-    async def info(self, addr, tf="30d"):
-        loop = asyncio.get_running_loop()
-        return await loop.run_in_executor(None, self.g.getWalletInfo, addr, tf)
+    async def info(self, addr, tf: str = "30d", retries: int = 3):
+        for i in range(retries):
+            try:
+                loop = asyncio.get_running_loop()
+                return await asyncio.wait_for(
+                    loop.run_in_executor(None, self.g.getWalletInfo, addr, tf),
+                    timeout=10,
+                )
+            except Exception as exc:
+                if i == retries - 1:
+                    if self.notif:
+                        await self.notif.send(f"gmgn info failed: {exc}")
+                    raise
+                await asyncio.sleep(2**i)
 
-    async def trades(self, addr, tf="30d"):
+    async def trades(self, addr, tf: str = "30d", retries: int = 3):
         url = f"https://gmgn.ai/stats/wallet/tx?address={addr}&period={tf}"
-        async with self.http.get(url) as r:
-            r.raise_for_status()
-            return (await r.json()).get("data", [])
+        for i in range(retries):
+            try:
+                async with self.http.get(url, timeout=10) as r:
+                    r.raise_for_status()
+                    return (await r.json()).get("data", [])
+            except Exception as exc:
+                if i == retries - 1:
+                    if self.notif:
+                        await self.notif.send(f"gmgn trades failed: {exc}")
+                    raise
+                await asyncio.sleep(2**i)
 
 
 class SolscanAPI:
     BASE = "https://public-api.solscan.io"
 
-    def __init__(self):
+    def __init__(self, notifier: "Notifier | None" = None):
         self.http = aiohttp.ClientSession()
+        self.notif = notifier
 
-    async def holders(self, mint):
-        async with self.http.get(
-            f"{self.BASE}/token/holders?account={mint}&limit=50"
-        ) as r:
-            r.raise_for_status()
-            return await r.json()
+    async def holders(self, mint: str, retries: int = 3):
+        url = f"{self.BASE}/token/holders?account={mint}&limit=50"
+        for i in range(retries):
+            try:
+                async with self.http.get(url, timeout=10) as r:
+                    r.raise_for_status()
+                    return await r.json()
+            except Exception as exc:
+                if i == retries - 1:
+                    if self.notif:
+                        await self.notif.send(f"Solscan holders failed: {exc}")
+                    raise
+                await asyncio.sleep(2**i)
 
-    async def meta(self, mint):
-        async with self.http.get(f"{self.BASE}/token/meta?account={mint}") as r:
-            r.raise_for_status()
-            return await r.json()
+    async def meta(self, mint: str, retries: int = 3):
+        url = f"{self.BASE}/token/meta?account={mint}"
+        for i in range(retries):
+            try:
+                async with self.http.get(url, timeout=10) as r:
+                    r.raise_for_status()
+                    return await r.json()
+            except Exception as exc:
+                if i == retries - 1:
+                    if self.notif:
+                        await self.notif.send(f"Solscan meta failed: {exc}")
+
+                    raise
+                await asyncio.sleep(2**i)
 
 
 class SafetyChecker:
@@ -170,16 +208,30 @@ class SafetyChecker:
         return solscan_ok and await self.rugcheck_pass(mint)
 
 
-async def pyth_atr(mint: str, minutes: int = ATR_LOOKBACK_MIN) -> float:
+async def pyth_atr(
+    mint: str,
+    minutes: int = ATR_LOOKBACK_MIN,
+    notifier: "Notifier | None" = None,
+    retries: int = 3,
+) -> float:
     end = int(time.time())
     start = end - 60 * minutes
     url = f"{PYTH_HIST_URL}{mint}?start_time={start}&end_time={end}&interval=1"
-    async with aiohttp.ClientSession() as s:
-        async with s.get(url) as r:
-            if r.status != 200:
-                return 0.05  # fallback vol
-            data = await r.json()
-            prices = [p[1] for p in data.get("prices", [])][-minutes:]
+    for i in range(retries):
+        try:
+            async with aiohttp.ClientSession() as s:
+                async with s.get(url, timeout=10) as r:
+                    if r.status != 200:
+                        raise ValueError(f"status {r.status}")
+                    data = await r.json()
+                    prices = [p[1] for p in data.get("prices", [])][-minutes:]
+                    break
+        except Exception as exc:
+            if i == retries - 1:
+                if notifier:
+                    await notifier.send(f"Pyth ATR failed: {exc}")
+                return 0.05
+            await asyncio.sleep(2**i)
     if len(prices) < 2:
         return 0.05
     returns = [
@@ -228,23 +280,44 @@ class WalletAnalyzer:
 
 # ------------------- execution layer ----------------------
 class JupiterExec:
-    def __init__(self):
+    def __init__(self, notifier: "Notifier | None" = None):
         self.http = aiohttp.ClientSession()
+        self.notif = notifier
 
-    async def quote(self, mint_in, mint_out, amount):
-        url = f"{JUPITER_URL}/v6/quote?inputMint={mint_in}&outputMint={mint_out}&amount={amount}&slippageBps=50"
-        async with self.http.get(url) as r:
-            r.raise_for_status()
-            return await r.json()
+    async def quote(self, mint_in, mint_out, amount, retries: int = 3):
+        url = (
+            f"{JUPITER_URL}/v6/quote?inputMint={mint_in}&outputMint={mint_out}"
+            f"&amount={amount}&slippageBps=50"
+        )
+        for i in range(retries):
+            try:
+                async with self.http.get(url, timeout=10) as r:
+                    r.raise_for_status()
+                    return await r.json()
+            except Exception as exc:
+                if i == retries - 1:
+                    if self.notif:
+                        await self.notif.send(f"Jupiter quote failed: {exc}")
+                    raise
+                await asyncio.sleep(2**i)
 
-    async def swap_tx(self, route):
-        async with self.http.post(
-            f"{JUPITER_URL}/v6/swap",
-            json={"route": route, "userPublicKey": route["inAmountAddress"]},
-        ) as r:
-            r.raise_for_status()
-            tx = await r.json()
-            return tx["swapTransaction"]
+    async def swap_tx(self, route, retries: int = 3):
+        for i in range(retries):
+            try:
+                async with self.http.post(
+                    f"{JUPITER_URL}/v6/swap",
+                    json={"route": route, "userPublicKey": route["inAmountAddress"]},
+                    timeout=10,
+                ) as r:
+                    r.raise_for_status()
+                    tx = await r.json()
+                    return tx["swapTransaction"]
+            except Exception as exc:
+                if i == retries - 1:
+                    if self.notif:
+                        await self.notif.send(f"Jupiter swap failed: {exc}")
+                    raise
+                await asyncio.sleep(2**i)
 
 
 # priority fee helper
@@ -296,16 +369,16 @@ PNL_G = Gauge("bot_pnl_pct", "PnL % from start")
 class CopyEngine:
     def __init__(self, seed_addrs: Sequence[str]):
         self.addrs = set(seed_addrs)
-        self.gmgn = GmgnAPI()
-        self.sol = SolscanAPI()
-        self.exec = JupiterExec()
         self.notif = Notifier()
+        self.gmgn = GmgnAPI(self.notif)
+        self.sol = SolscanAPI(self.notif)
+        self.exec = JupiterExec(self.notif)
         self.pb = PositionBook(100)
         self.safe = SafetyChecker(self.sol)
 
     # Kelly + ATR sizing
     async def _size(self, token: str, sharpe: float, nav: float):
-        vol = await pyth_atr(token) or 0.05
+        vol = await pyth_atr(token, notifier=self.notif) or 0.05
         edge = max(sharpe, 0)
         f = 0.5 * edge  # half‑Kelly approximation
         f = min(f, MAX_KELLY_F)
@@ -318,8 +391,14 @@ class CopyEngine:
         nav = self.pb.nav()
         stake = await self._size(token, 1.5, nav)  # assume sharpe proxy 1.5 for now
         amt = int(stake / price)
-        quote = await self.exec.quote(token, token, amt)  # self‑swap for placeholder
-        _ = await self.exec.swap_tx(quote["data"][0])
+        try:
+            quote = await self.exec.quote(
+                token, token, amt
+            )  # self‑swap for placeholder
+            _ = await self.exec.swap_tx(quote["data"][0])
+        except Exception as exc:
+            await self.notif.send(f"Exec error: {exc}")
+            return
         # send tx via RPC (omitted) with priority fee
         await self.notif.send(f"BUY {amt} {token[:4]}… @ {price:.6f} SOL")
 
@@ -341,6 +420,7 @@ class CopyEngine:
                 logging.getLogger(__name__).warning(
                     "WS reconnect in %s sec due to %s", backoff, exc
                 )
+                await self.notif.send(f"WebSocket error: {exc}")
                 await asyncio.sleep(backoff)
                 backoff = min(backoff * 2, 60)
 
