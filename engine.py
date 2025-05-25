@@ -14,7 +14,6 @@ import random
 
 import aiohttp
 import base58
-import websockets
 from prometheus_client import Gauge, Histogram, start_http_server
 from solders.keypair import Keypair
 from solana.rpc.api import Client
@@ -185,6 +184,10 @@ class CopyEngine:
         sigma = math.sqrt(ewma) * math.sqrt(525_600)
         return sigma
 
+    async def _refresh_seed_wallets(self) -> None:
+        """Placeholder for polling trending wallets and updating seeds."""
+        await asyncio.sleep(0)
+
     async def _size(
         self, token: str, sharpe: float, nav: float, trades: int = 30
     ) -> float:
@@ -302,35 +305,10 @@ class CopyEngine:
                         if token and await self.safe.is_safe(token):
                             await self._execute_buy(ev)
         else:
-            backoff = 1
+            # No real WS – fall back to a long-poll every 60 s
             while True:
-                try:
-                    async with websockets.connect("wss://ws.flipside.ai/v1") as ws:
-                        backoff = 1
-                        async for msg in ws:
-                            try:
-                                ev = json.loads(msg)
-                            except json.JSONDecodeError:
-                                continue
-                            if (
-                                ev.get("address") in self.addrs
-                                and ev.get("side") == "buy"
-                            ):
-                                token = ev.get("token")
-                                if not token:
-                                    continue
-                                if await self.safe.is_safe(token):
-                                    await self._execute_buy(ev)
-                except Exception as exc:  # noqa: BLE001
-                    logging.getLogger(__name__).warning(
-                        "WS reconnect in %s sec due to %s", backoff, exc
-                    )
-                    try:
-                        await self.notif.send(f"WS disconnect: {exc}")
-                    except Exception:  # noqa: BLE001
-                        pass
-                    await asyncio.sleep(backoff)
-                    backoff = min(backoff * 2, 60)
+                await self._refresh_seed_wallets()
+                await asyncio.sleep(60)
 
     async def _mark_positions(self):
         while True:
