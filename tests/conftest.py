@@ -1,8 +1,8 @@
 import sys
 import types
 
-# Stub gmgn module
-gmgn_mod = types.ModuleType("gmgn")
+# Stub flipside module
+flipside_mod = types.ModuleType("flipside")
 
 
 class Dummy:
@@ -13,8 +13,8 @@ class Dummy:
         return {"data": []}
 
 
-gmgn_mod.gmgn = lambda: Dummy()
-sys.modules.setdefault("gmgn", gmgn_mod)
+flipside_mod.flipside = lambda: Dummy()
+sys.modules.setdefault("flipside", flipside_mod)
 
 # Stub aiohttp
 aiohttp_mod = types.ModuleType("aiohttp")

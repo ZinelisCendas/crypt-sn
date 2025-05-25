@@ -1,4 +1,4 @@
-# gmgn\_wallet\_bot • Developer & AI Guide
+# Flipside\_wallet\_bot • Developer & AI Guide
 
 *A production‑grade, open‑source Solana copy‑trading agent*
 
@@ -45,7 +45,7 @@ Automate Solana copy‑trading on *free* public APIs while **maximising risk‑a
 ## 3 Quick‑Start
 
 ```bash
-pip install -r requirements.txt   # aiohttp websockets pandas prometheus-client gmgn-wrapper
+pip install -r requirements.txt   # aiohttp websockets pandas prometheus-client flipside-wrapper
 cp .env.template .env             # fill PRIVATE_KEY etc.
 python main.py                    # starts trending copy trading
 pytest tests/smoke.py             # optional smoke test
@@ -61,7 +61,7 @@ Smoke‑test: `pytest tests/smoke.py` ⟶ should finish < 10 s and emit NAV ga
 
 ```mermaid
 graph TD
-  A[gmgn WebSocket] -->|buy events| B[WalletFilter]
+  A[Flipside WebSocket] -->|buy events| B[WalletFilter]
   B -->|Sharpe OK| C[SafetyChecker]
   C -->|safe| D[KellySizer]
   D -->|size, vol| E[JupiterSwap]
@@ -77,7 +77,7 @@ graph TD
 
 | API       | Purpose                | Rate‑limit    |
 | --------- | ---------------------- | ------------- |
-| gmgn.ai   | wallet stats + tx list | ∞ / free      |
+| flipside.ai   | wallet stats + tx list | ∞ / free      |
 | Solscan   | holder dist + meta     | \~30 req/min  |
 | RugCheck  | LP lock & votes        | \~60 req/min  |
 | Pyth HTTP | price candles          | 120 req/min   |

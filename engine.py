@@ -36,7 +36,7 @@ from exec import JupiterExec, add_priority_fee
 from mev import send_bundle
 from safety import SafetyChecker, SolscanAPI
 from sizing import kelly_size, pyth_atr, pyth_price
-from wallet import GmgnAPI, WalletMetrics
+from wallet import FlipsideAPI, WalletMetrics
 
 
 @dataclass(slots=True)
@@ -136,7 +136,7 @@ class CopyEngine:
     ):
         self.addrs = set(seed_addrs)
         self.notif = Notifier()
-        self.gmgn = GmgnAPI(self.notif)
+        self.flipside = FlipsideAPI(self.notif)
         self.sol = SolscanAPI(self.notif)
         self.exec = JupiterExec(self.notif)
         self.pb = PositionBook(100)
@@ -298,7 +298,7 @@ class CopyEngine:
             backoff = 1
             while True:
                 try:
-                    async with websockets.connect("wss://ws.gmgn.ai/v1") as ws:
+                    async with websockets.connect("wss://ws.flipside.ai/v1") as ws:
                         backoff = 1
                         async for msg in ws:
                             ev = json.loads(msg)

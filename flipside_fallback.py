@@ -1,5 +1,5 @@
 try:
-    from gmgn import gmgn as real_gmgn  # type: ignore
+    from flipside import flipside as real_flipside  # type: ignore
 except ModuleNotFoundError:
 
     class Dummy:
@@ -9,8 +9,8 @@ except ModuleNotFoundError:
         def getTrendingWallets(self):
             return {"data": []}
 
-    def real_gmgn():
+    def real_flipside():
         return Dummy()
 
 
-gmgn = real_gmgn
+flipside = real_flipside

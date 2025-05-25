@@ -10,7 +10,7 @@ import aiohttp
 import pandas as pd
 import numpy as np
 from sklearn.linear_model import LinearRegression
-from gmgn_fallback import gmgn
+from flipside_fallback import flipside
 import networkx as nx
 
 from helpers import retry
@@ -52,9 +52,9 @@ def _corr(a: Dict[str, float], b: Dict[str, float]) -> float:
     return cov / (var1**0.5 * var2**0.5)
 
 
-class GmgnAPI:  # minimal wrapper
+class FlipsideAPI:  # minimal wrapper
     def __init__(self, notif: Any | None = None):
-        self.g = gmgn()
+        self.g = flipside()
         self.http = aiohttp.ClientSession()
         self.notif = notif
 
@@ -62,25 +62,25 @@ class GmgnAPI:  # minimal wrapper
         loop = asyncio.get_running_loop()
         return await retry(
             lambda: loop.run_in_executor(None, self.g.getWalletInfo, addr, tf),
-            name="gmgn.info",
+            name="flipside.info",
             notif=self.notif,
         )
 
     async def trades(self, addr: str, tf: str = "30d"):
-        url = f"https://gmgn.ai/stats/wallet/tx?address={addr}&period={tf}"
+        url = f"https://flipside.ai/stats/wallet/tx?address={addr}&period={tf}"
 
         async def go():
             async with self.http.get(url) as r:
                 r.raise_for_status()
                 return (await r.json()).get("data", [])
 
-        return await retry(go, name="gmgn.trades", notif=self.notif)
+        return await retry(go, name="flipside.trades", notif=self.notif)
 
 
 class WalletAnalyzer:
     def __init__(self, tf: str = "30d", notif: Any | None = None):
         self.tf = tf
-        self.api = GmgnAPI(notif)
+        self.api = FlipsideAPI(notif)
 
     async def _one(self, addr: str):
         info, trades = await asyncio.gather(

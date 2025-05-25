@@ -7,7 +7,7 @@ from pythonjsonlogger import jsonlogger
 import argparse
 import pandas as pd
 from config import PRIV_KEY
-from gmgn_wallet_bot import main as run_bot
+from flipside_wallet_bot import main as run_bot
 from helpers import calc_report
 
 
