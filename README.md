@@ -18,18 +18,10 @@ cp .env.template .env
 ## Quick Start
 
 ```bash
-python gmgn_wallet_bot.py mirror --seed trending --min-profit 5
-```
-
-## Smoke Test
-
-Verify the bot starts correctly using the smoke test:
-
-```bash
+python main.py
 pytest tests/smoke.py
 ```
 
-The test should complete in a few seconds with no failures.
 
 ## Security
 
