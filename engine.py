@@ -22,10 +22,12 @@ from config import (
     PRUNE_INTERVAL_H,
     PRIV_KEY,
     RPC_URL,
+    JITO_RPC,
     STOP_LOSS_PCT,
     TAKE_PROFIT_PCT,
 )
 from exec import JupiterExec, add_priority_fee
+from mev import send_bundle
 from safety import SafetyChecker, SolscanAPI
 from sizing import kelly_size, pyth_atr, pyth_price
 from wallet import GmgnAPI
@@ -156,8 +158,18 @@ class CopyEngine:
         client = Client(RPC_URL)
         try:
             start_t = time.time()
-            resp = cast(dict[str, Any], client.send_raw_transaction(tx.serialize()))
-            sig = resp["result"]
+            if JITO_RPC:
+                ok = await send_bundle(tx.serialize())
+                if ok:
+                    sig = "bundle"
+                else:
+                    resp = cast(
+                        dict[str, Any], client.send_raw_transaction(tx.serialize())
+                    )
+                    sig = resp.get("result", "raw")
+            else:
+                resp = cast(dict[str, Any], client.send_raw_transaction(tx.serialize()))
+                sig = resp["result"]
             INCLUSION_G.observe((time.time() - start_t) * 1000)
             logging.getLogger(__name__).info("tx %s sent", sig)
         except Exception as exc:  # noqa: BLE001

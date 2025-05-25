@@ -54,6 +54,7 @@ class Session:
 
 
 aiohttp_mod.ClientSession = Session
+aiohttp_mod.ClientTimeout = lambda *a, **k: None
 sys.modules.setdefault("aiohttp", aiohttp_mod)
 
 # Stub websockets
