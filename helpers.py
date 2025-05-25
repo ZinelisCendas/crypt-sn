@@ -24,3 +24,10 @@ async def retry(
                 raise
             await asyncio.sleep(delay)
             delay = min(delay * 2, 30)
+
+
+def slippage_bps(executed_price: float, quote_price: float) -> float:
+    """Return slippage in basis points given executed and quoted price."""
+    if executed_price <= 0 or quote_price <= 0:
+        return 0.0
+    return abs(executed_price / quote_price - 1) * 10_000

@@ -26,6 +26,7 @@ from config import (
     TAKE_PROFIT_PCT,
 )
 from exec import JupiterExec, add_priority_fee
+from helpers import slippage_bps
 from safety import SafetyChecker, SolscanAPI
 from sizing import kelly_size, pyth_atr, pyth_price
 from wallet import GmgnAPI
@@ -136,6 +137,32 @@ class CopyEngine:
         stake = stake * (nav_vol_target / portfolio_est_vol)
         return stake
 
+    async def _confirmed_out_amount(self, client: Client, sig: str) -> int:
+        """Wait for transaction confirmation and return output token amount."""
+        loop = asyncio.get_running_loop()
+        for _ in range(20):
+            try:
+                tx = await loop.run_in_executor(
+                    None, lambda: client.get_transaction(sig, "jsonParsed")  # type: ignore[arg-type]
+                )
+                meta = (
+                    tx.get("result", {}).get("meta") if isinstance(tx, dict) else None
+                )
+                if meta:
+                    pre = meta.get("preTokenBalances", [])
+                    post = meta.get("postTokenBalances", [])
+                    for b0, b1 in zip(pre, post):
+                        pre_amt = int(b0.get("uiTokenAmount", {}).get("amount", 0))
+                        post_amt = int(b1.get("uiTokenAmount", {}).get("amount", 0))
+                        diff = post_amt - pre_amt
+                        if diff > 0:
+                            return diff
+                    return 0
+            except Exception:  # noqa: BLE001
+                pass
+            await asyncio.sleep(0.5)
+        return 0
+
     async def _execute_buy(self, ev: dict):
         token = ev["token"]
         price = float(ev["price"])
@@ -160,10 +187,14 @@ class CopyEngine:
             sig = resp["result"]
             INCLUSION_G.observe((time.time() - start_t) * 1000)
             logging.getLogger(__name__).info("tx %s sent", sig)
+            out = await self._confirmed_out_amount(client, sig)
         except Exception as exc:  # noqa: BLE001
             logging.getLogger(__name__).warning("tx failure: %s", exc)
+            out = 0
 
-        SLIPPAGE_G.observe(0.0)
+        quote_price = quote["data"][0].get("outAmount", 0) / max(amt, 1)
+        executed_price = amt / out if out else quote_price
+        SLIPPAGE_G.observe(slippage_bps(executed_price, quote_price))
         await self.notif.send(f"BUY {amt} {token[:4]}… @ {price:.6f} SOL")
         self.pb.update(token, amt, price, "buy")
         nav = self.pb.nav()

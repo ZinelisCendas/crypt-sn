@@ -3,7 +3,6 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import conftest  # noqa:F401
-import asyncio
 import pytest
 from exec import get_priority_fee
 
