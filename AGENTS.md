@@ -45,7 +45,7 @@ Automate Solana copy‑trading on *free* public APIs while **maximising risk‑a
 ## 3 Quick‑Start
 
 ```bash
-pip install -r requirements.txt   # aiohttp websockets pandas prometheus-client gmgnai-wrapper
+pip install -r requirements.txt   # aiohttp websockets pandas prometheus-client gmgn-wrapper
 cp .env.template .env             # fill PRIVATE_KEY etc.
 python main.py                    # starts trending copy trading
 pytest tests/smoke.py             # optional smoke test

@@ -8,6 +8,9 @@ Open-source Solana copy trading bot with safety checks and adaptive sizing.
 pip install -r requirements.txt
 ```
 
+The included `gmgn-wrapper` package exposes the `gmgn` module used by
+`gmgn_wallet_bot`.
+
 ## Environment Setup
 
 ```bash

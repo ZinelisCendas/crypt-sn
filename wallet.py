@@ -10,7 +10,7 @@ import aiohttp
 import pandas as pd
 import numpy as np
 from sklearn.linear_model import LinearRegression
-from gmgn import gmgn
+from gmgn_fallback import gmgn
 import networkx as nx
 
 from helpers import retry
