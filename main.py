@@ -194,6 +194,20 @@ async def pyth_atr(mint: str, minutes: int = ATR_LOOKBACK_MIN) -> float:
     return statistics.mean(returns) * math.sqrt(1440)  # daily vol approx
 
 
+async def pyth_price(mint: str) -> float:
+    """Return the latest Pyth price for ``mint``."""
+    end = int(time.time())
+    start = end - 120
+    url = f"{PYTH_HIST_URL}{mint}?start_time={start}&end_time={end}&interval=1"
+    async with aiohttp.ClientSession() as s:
+        async with s.get(url) as r:
+            if r.status != 200:
+                return 0.0
+            data = await r.json()
+            prices = [p[1] for p in data.get("prices", [])]
+            return float(prices[-1]) if prices else 0.0
+
+
 # --------------------- analytics --------------------------
 class WalletAnalyzer:
     def __init__(self, tf="30d"):
@@ -335,6 +349,8 @@ class CopyEngine:
         self.notif = Notifier()
         self.pb = PositionBook(100)
         self.safe = SafetyChecker(self.sol)
+        self.closed: Dict[str, float] = {}
+        self.start_nav = self.pb.init
 
     # Kelly + ATR sizing
     async def _size(self, token: str, sharpe: float, nav: float):
@@ -400,9 +416,40 @@ class CopyEngine:
                 await asyncio.sleep(backoff)
                 backoff = min(backoff * 2, 60)
 
+    async def _mark_positions(self):
+        """Update marks, close on SL/TP and prune old closed entries."""
+        while True:
+            now = time.time()
+            for token, pos in list(self.pb.pos.items()):
+                price = await pyth_price(token)
+                if not price:
+                    continue
+                self.pb.mark[token] = price
+                if price <= pos.sl or price >= pos.tp:
+                    pnl = price * pos.qty - pos.value
+                    self.pb.init += pnl
+                    self.pb.pos.pop(token, None)
+                    self.pb.mark.pop(token, None)
+                    self.closed[token] = now
+                    await self.notif.send(
+                        f"SELL {int(pos.qty)} {token[:4]}… @ {price:.6f} PnL {pnl:+.4f}"
+                    )
+
+            nav = self.pb.nav()
+            self.pb.update_peak(nav)
+            NAV_G.set(nav)
+            if self.start_nav:
+                PNL_G.set(100 * (nav - self.start_nav) / self.start_nav)
+
+            for token, ts in list(self.closed.items()):
+                if now - ts >= PRUNE_INTERVAL_H * 3600:
+                    self.closed.pop(token, None)
+
+            await asyncio.sleep(60)
+
     async def run(self):
         start_http_server(9100)
-        await self._wallet_stream()
+        await asyncio.gather(self._wallet_stream(), self._mark_positions())
 
 
 # --------------------- main -------------------------------
