@@ -25,12 +25,16 @@ def _trending_wallets(limit: int = 10) -> list[str]:
     # fact_transactions keeps realised PnL in `pnl`;             ↙︎
     sql = f"""
       SELECT
-        signer_address                 AS address,
-        SUM(pnl)                       AS realised_pnl
-      FROM  solana.core.fact_transactions
-      WHERE block_timestamp >= CURRENT_TIMESTAMP - INTERVAL '30 day'
-      GROUP BY 1
-      ORDER BY realised_pnl DESC
+        SIGNERS[0] AS address,
+        SUM(pnl)    AS total_pnl
+      FROM
+        solana.core.fact_transactions
+      WHERE
+        block_timestamp >= CURRENT_TIMESTAMP - INTERVAL '30 days'
+      GROUP BY
+        1
+      ORDER BY
+        total_pnl DESC
       LIMIT {limit}
     """
     try:
@@ -49,7 +53,7 @@ def _trending_wallets(limit: int = 10) -> list[str]:
     ):  # pragma: no cover - logs only
         logging.getLogger(__name__).warning("trending query failed", exc_info=True)
         return []
-    return [r[0] for r in (res.records or [])]
+    return [r['address'] for r in (res.records or [])]
 
 
 async def run_engine(ws_log: Optional[str] = None, dry_run: bool = False) -> None:
