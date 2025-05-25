@@ -1,4 +1,5 @@
 # Core dependencies
+base58
 aiohttp
 websockets
 pandas
