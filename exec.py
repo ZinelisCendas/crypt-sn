@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import aiohttp
-import base64
 from typing import Any
 
 from config import JUPITER_URL
@@ -55,6 +54,16 @@ class JupiterExec:
                 return await r.json()
 
         return await retry(go, name="jup.limit", notif=self.notif)
+
+    async def cancel_limit(self, order_id: str):
+        url = f"{JUPITER_URL}/v6/limit/cancel"
+
+        async def go():
+            async with self.http.post(url, json={"limitOrderId": order_id}) as r:
+                r.raise_for_status()
+                return await r.json()
+
+        return await retry(go, name="jup.cancel", notif=self.notif)
 
 
 async def get_priority_fee() -> int:

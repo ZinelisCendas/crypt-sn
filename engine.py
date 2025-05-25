@@ -40,6 +40,7 @@ class Position:
     sl: float
     tp: float
     src: str
+    lmt_id: str | None = None
 
 
 class PositionBook:
@@ -166,6 +167,19 @@ class CopyEngine:
         SLIPPAGE_G.observe(0.0)
         await self.notif.send(f"BUY {amt} {token[:4]}… @ {price:.6f} SOL")
         self.pb.update(token, amt, price, "buy")
+        limit_price = price * (1 + TAKE_PROFIT_PCT / 100)
+        try:
+            res = await self.exec.create_limit(
+                token,
+                "So11111111111111111111111111111111111111112",
+                amt,
+                limit_price,
+            )
+            pos = self.pb.pos.get(token)
+            if pos:
+                pos.lmt_id = res.get("limitOrderId")
+        except Exception as exc:  # noqa: BLE001
+            logging.getLogger(__name__).warning("limit order error: %s", exc)
         nav = self.pb.nav()
         NAV_G.set(nav)
         PNL_G.set((nav - self.pb.init) / self.pb.init * 100)
@@ -213,6 +227,13 @@ class CopyEngine:
                     continue
                 self.pb.mark[token] = price
                 if price <= pos.sl or price >= pos.tp:
+                    if price <= pos.sl and pos.lmt_id:
+                        try:
+                            await self.exec.cancel_limit(pos.lmt_id)
+                        except Exception as exc:  # noqa: BLE001
+                            logging.getLogger(__name__).warning(
+                                "cancel limit error: %s", exc
+                            )
                     pnl = price * pos.qty - pos.value
                     self.pb.init += pnl
                     self.pb.pos.pop(token, None)

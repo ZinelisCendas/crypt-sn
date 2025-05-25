@@ -3,6 +3,8 @@ from __future__ import annotations
 import logging
 import logging.config
 
+from pythonjsonlogger import jsonlogger
+
 from config import PRIV_KEY
 from gmgn_wallet_bot import main
 
@@ -28,8 +30,6 @@ class SecretFilter(logging.Filter):
             record.args = ()
         return True
 
-
-from pythonjsonlogger import jsonlogger
 
 LOG_CONFIG = {
     "version": 1,
