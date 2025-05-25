@@ -2,7 +2,7 @@
 aiohttp
 websockets
 pandas
-gmgnai-wrapper
+gmgn-wrapper
 python-dotenv
 prometheus-client
 solana
