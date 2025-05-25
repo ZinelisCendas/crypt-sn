@@ -7,7 +7,14 @@ flipside_mod = types.ModuleType("flipside")
 
 class DummyClient:
     def query(self, *a, **k):
-        return types.SimpleNamespace(records=[])
+        return types.SimpleNamespace(
+            records=[], query_id="1", page=types.SimpleNamespace(totalPages=1)
+        )
+
+    def get_query_results(self, *a, **k):
+        return types.SimpleNamespace(
+            records=[], page=types.SimpleNamespace(totalPages=1)
+        )
 
 
 class Dummy:
